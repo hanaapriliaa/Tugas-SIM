@@ -244,10 +244,11 @@
     border-radius:3px;
   }
   .stamp b{color:var(--ink);font-weight:600}
-  @page{size:1340px 2360px;margin:0}
+  @page{size:1340px 3260px;margin:0}
   @media print{
-    body{background:#fff;padding:0}
+    body{background:#fff;padding:0;overflow:visible}
     .sheet{box-shadow:none;zoom:1!important;width:1280px;padding:36px 44px 28px}
+    body{display:block;justify-content:start}
   }
 </style>
 </head>
