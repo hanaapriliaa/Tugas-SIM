@@ -4,189 +4,279 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Riset Pasar POS Indonesia</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --gold: #c9a227;
+    --gold-light: #e8cf7a;
+    --ink: #14120d;
+    --ink-2: #1e1a12;
+    --paper: #f5efe0;
+    --muted: #8a7f5c;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-    background: #fafafa;
-    color: #1a1a1a;
-    line-height: 1.6;
-    max-width: 760px;
+    font-family: "Cormorant Garamond", Georgia, serif;
+    background: var(--ink);
+    color: var(--paper);
+    line-height: 1.65;
+    font-size: 1.05rem;
+    padding: 40px 16px 80px;
+  }
+  .frame {
+    max-width: 780px;
     margin: 0 auto;
-    padding: 48px 24px 80px;
+    border: 1px solid var(--gold);
+    outline: 1px solid var(--gold);
+    outline-offset: 6px;
+    padding: 48px 40px 60px;
+    background:
+      repeating-linear-gradient(135deg, transparent 0 34px, rgba(201,162,39,.05) 34px 35px),
+      var(--ink-2);
   }
-  header { margin-bottom: 40px; }
+  /* ---- deco ornaments ---- */
+  .deco-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 auto 20px;
+    max-width: 320px;
+  }
+  .deco-line::before, .deco-line::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold));
+  }
+  .deco-line::after { background: linear-gradient(90deg, var(--gold), transparent); }
+  .diamond {
+    width: 9px; height: 9px;
+    background: var(--gold);
+    transform: rotate(45deg);
+    box-shadow: 0 0 0 3px var(--ink-2), 0 0 0 4px var(--gold);
+  }
+  header { text-align: center; margin-bottom: 50px; }
+  .kicker {
+    font-family: Cinzel, serif;
+    font-size: .72rem;
+    letter-spacing: .42em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
   h1 {
-    font-size: 1.9rem;
+    font-family: Cinzel, serif;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: 2.1rem;
+    letter-spacing: .06em;
+    margin: 10px 0 4px;
+    color: var(--gold-light);
+    text-transform: uppercase;
   }
-  .sub {
-    color: #777;
-    font-size: 0.95rem;
-    margin-top: 6px;
-  }
+  .sub { font-size: 1.05rem; color: #cfc6a8; font-style: italic; }
   .meta {
     display: inline-block;
-    margin-top: 14px;
-    font-size: 0.8rem;
-    color: #666;
-    border: 1px solid #e2e2e2;
-    border-radius: 999px;
-    padding: 4px 14px;
-    background: #fff;
-  }
-  section { margin-bottom: 48px; }
-  h2 {
-    font-size: 1.05rem;
-    font-weight: 600;
+    margin-top: 18px;
+    font-family: Cinzel, serif;
+    font-size: .7rem;
+    letter-spacing: .28em;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #999;
-    margin-bottom: 18px;
-    border-bottom: 1px solid #ececec;
-    padding-bottom: 10px;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    padding: 7px 22px;
   }
+  h2 {
+    font-family: Cinzel, serif;
+    font-size: .95rem;
+    font-weight: 600;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--gold);
+    margin-bottom: 30px;
+  }
+  h2::before {
+    content: "◆ ◆ ◆";
+    display: block;
+    font-size: .55rem;
+    letter-spacing: .8em;
+    color: var(--gold);
+    opacity: .7;
+    margin-bottom: 12px;
+  }
+  section { margin-bottom: 60px; }
   ol.data { list-style: none; counter-reset: item; }
   ol.data li {
     counter-increment: item;
-    background: #fff;
-    border: 1px solid #ececec;
-    border-radius: 12px;
-    padding: 18px 20px 18px 62px;
-    margin-bottom: 12px;
+    border: 1px solid rgba(201,162,39,.45);
+    padding: 20px 22px 18px 74px;
+    margin-bottom: 16px;
     position: relative;
+    background: linear-gradient(180deg, rgba(201,162,39,.06), transparent 60%);
   }
   ol.data li::before {
     content: counter(item);
     position: absolute;
     left: 18px;
-    top: 20px;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: #1a1a1a;
-    color: #fff;
-    font-size: 0.8rem;
-    font-weight: 600;
+    top: 22px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-family: Cinzel, serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--ink);
+    background: var(--gold);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  }
+  ol.data li::after {
+    content: "";
+    position: absolute;
+    left: 8px; right: 8px; top: 6px; bottom: 6px;
+    border: 1px solid rgba(201,162,39,.25);
+    pointer-events: none;
   }
   .num {
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-family: Cinzel, serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    color: var(--gold-light);
   }
-  .desc { color: #555; font-size: 0.92rem; margin-top: 2px; }
+  .desc { color: #d8d0b4; font-size: 1rem; margin-top: 3px; }
   .src {
     display: block;
-    margin-top: 8px;
-    font-size: 0.78rem;
-    color: #999;
+    margin-top: 9px;
+    font-family: Cinzel, serif;
+    font-size: .68rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
-  .src a { color: #999; text-underline-offset: 3px; }
+  .src a { color: var(--muted); }
+  .src a:hover { color: var(--gold-light); }
+  .players {
+    border: 1px solid rgba(201,162,39,.45);
+    padding: 26px 30px;
+    text-align: center;
+    font-size: 1.05rem;
+    color: #d8d0b4;
+  }
+  .players strong { color: var(--gold-light); font-family: Cinzel, serif; font-size: .95rem; letter-spacing: .05em; }
   .insight {
-    background: #1a1a1a;
-    color: #f5f5f5;
-    border-radius: 12px;
-    padding: 22px 24px;
-    font-size: 0.95rem;
+    border: 1px solid var(--gold);
+    outline: 1px solid rgba(201,162,39,.4);
+    outline-offset: 4px;
+    padding: 30px 34px;
+    text-align: center;
+    background: linear-gradient(180deg, rgba(201,162,39,.10), rgba(201,162,39,.03));
+    font-size: 1.08rem;
   }
-  .insight strong { color: #fff; }
+  .insight strong { color: var(--gold-light); }
   footer {
-    margin-top: 56px;
-    font-size: 0.78rem;
-    color: #aaa;
-    border-top: 1px solid #ececec;
-    padding-top: 16px;
+    margin-top: 40px;
+    text-align: center;
+    font-size: .8rem;
+    font-style: italic;
+    color: var(--muted);
   }
   @media (max-width: 560px) {
-    ol.data li { padding-left: 54px; }
+    .frame { padding: 34px 20px 44px; outline-offset: 4px; }
+    ol.data li { padding-left: 64px; }
+    h1 { font-size: 1.55rem; }
   }
 </style>
 </head>
 <body>
 
+<div class="frame">
+
 <header>
-  <h1>Riset Pasar POS Indonesia</h1>
-  <p class="sub">Ringkasan 10 data utama Point of Sale (POS) di Indonesia — dihimpun dari riset pasar &amp; data resmi.</p>
-  <span class="meta">17 November &middot; Disusun oleh insshbrnaa</span>
+  <p class="kicker">Laporan Riset Pasar</p>
+  <h1>Pasar POS Indonesia</h1>
+  <p class="sub">Sepuluh data utama Point of Sale di Indonesia, dihimpun dari riset pasar &amp; data resmi.</p>
+  <span class="meta">17 November &middot; insshbrnaa</span>
 </header>
 
 <section>
-  <h2>10 Data Riset Pasar</h2>
+  <div class="deco-line"><span class="diamond"></span></div>
+  <h2>Data Riset Pasar</h2>
   <ol class="data">
     <li>
-      <span class="num">USD 562 juta</span>
+      <span class="num">USD 562 Juta</span>
       <p class="desc">Nilai pasar POS Indonesia pada tahun 2025, mencakup perangkat keras, perangkat lunak, dan layanan merchant.</p>
-      <span class="src">Sumber: <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="src">Sumber &middot; <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
-      <span class="num">USD 999 juta &mdash; 1,102 juta</span>
+      <span class="num">USD 999 Juta &ndash; 1,102 M</span>
       <p class="desc">Proyeksi pasar POS Indonesia mencapai USD 999 juta pada 2031 dan USD 1,102 juta pada 2032.</p>
-      <span class="src">Sumber: <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="src">Sumber &middot; <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
       <span class="num">CAGR 10,10%</span>
       <p class="desc">Laju pertumbuhan tahunan pasar POS Indonesia periode 2025&ndash;2032; pertumbuhan historis 2020&ndash;2025 rata-rata 8,66% per tahun.</p>
-      <span class="src">Sumber: <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="src">Sumber &middot; <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
-      <span class="num">1,9 juta &rarr; 4,85 juta endpoint</span>
-      <p class="desc">Terminal POS berbayar aktif naik dari ±1,9 juta (2025) menjadi ±4,85 juta unit (2032), didorong langganan SaaS murah dan POS berbasis tablet/Android.</p>
-      <span class="src">Sumber: <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="num">1,9 Juta &rarr; 4,85 Juta Endpoint</span>
+      <p class="desc">Terminal POS berbayar aktif naik dari &plusmn;1,9 juta (2025) menjadi &plusmn;4,85 juta unit (2032), didorong langganan SaaS murah dan POS berbasis tablet/Android.</p>
+      <span class="src">Sumber &middot; <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
-      <span class="num">39,3 juta merchant QRIS</span>
+      <span class="num">39,3 Juta Merchant QRIS</span>
       <p class="desc">Per semester I 2025, pengguna QRIS mencapai 39,3 juta merchant &mdash; 93,16% di antaranya adalah UMKM &mdash; memperluas pasar potensial POS.</p>
-      <span class="src">Sumber: QRIS/Bank Indonesia, dikutip <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="src">Sumber &middot; QRIS/Bank Indonesia, dikutip <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
-      <span class="num">6,05 miliar transaksi QRIS</span>
+      <span class="num">6,05 Miliar Transaksi QRIS</span>
       <p class="desc">Volume transaksi QRIS mencapai 6,05 miliar pada semester I 2025, dengan pertumbuhan 147,65% (y-o-y) per kuartal III 2025.</p>
-      <span class="src">Sumber: QRIS/Bank Indonesia, dikutip <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="src">Sumber &middot; QRIS/Bank Indonesia, dikutip <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
-      <span class="num">58% dominasi cloud</span>
+      <span class="num">58% Dominasi Cloud</span>
       <p class="desc">Pangsa POS berbasis cloud mencapai 58% pada 2025 dan diproyeksikan ke 82% pada 2032 &mdash; model berlangganan menurunkan biaya awal bagi UMKM.</p>
-      <span class="src">Sumber: <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
+      <span class="src">Sumber &middot; <a href="https://www.kenresearch.com/industry-reports/indonesia-pos-market">Ken Research (2026)</a></span>
     </li>
     <li>
-      <span class="num">29,55% pangsa Asia Tenggara</span>
+      <span class="num">29,55% Pangsa Asia Tenggara</span>
       <p class="desc">Indonesia menguasai 29,55% pasar terminal POS Asia Tenggara (senilai USD 4,96 miliar pada 2025) dengan CAGR 16,05% &mdash; tertinggi di kawasan.</p>
-      <span class="src">Sumber: <a href="https://www.mordorintelligence.com/industry-reports/southeast-asia-pos-terminal-market">Mordor Intelligence (2026)</a></span>
+      <span class="src">Sumber &middot; <a href="https://www.mordorintelligence.com/industry-reports/southeast-asia-pos-terminal-market">Mordor Intelligence (2026)</a></span>
     </li>
     <li>
-      <span class="num">2,1&ndash;2,3 juta unit mesin POS</span>
-      <p class="desc">Permintaan unit mesin POS Indonesia tumbuh dari ±1,2 juta (2020) menjadi 2,1&ndash;2,3 juta unit (2025); basis terpasang ±4&ndash;5 juta unit, dengan CAGR 12&ndash;16% hingga 2035.</p>
-      <span class="src">Sumber: <a href="https://www.indexbox.io/store/indonesia-pos-machine-market-analysis-forecast-size-trends-and-insights/">IndexBox (2026)</a></span>
+      <span class="num">2,1 &ndash; 2,3 Juta Unit Mesin POS</span>
+      <p class="desc">Permintaan unit mesin POS Indonesia tumbuh dari &plusmn;1,2 juta (2020) menjadi 2,1&ndash;2,3 juta unit (2025); basis terpasang &plusmn;4&ndash;5 juta unit, dengan CAGR 12&ndash;16% hingga 2035.</p>
+      <span class="src">Sumber &middot; <a href="https://www.indexbox.io/store/indonesia-pos-machine-market-analysis-forecast-size-trends-and-insights/">IndexBox (2026)</a></span>
     </li>
     <li>
-      <span class="num">UMKM &gt; 55% permintaan</span>
-      <p class="desc">UMKM menyumbang lebih dari 55% permintaan mesin POS (naik dari ±40% pada 2021), didorong standardisasi QRIS dan program cashless Bank Indonesia.</p>
-      <span class="src">Sumber: <a href="https://www.indexbox.io/store/indonesia-pos-machine-market-analysis-forecast-size-trends-and-insights/">IndexBox (2026)</a></span>
+      <span class="num">UMKM &gt; 55% Permintaan</span>
+      <p class="desc">UMKM menyumbang lebih dari 55% permintaan mesin POS (naik dari &plusmn;40% pada 2021), didorong standardisasi QRIS dan program cashless Bank Indonesia.</p>
+      <span class="src">Sumber &middot; <a href="https://www.indexbox.io/store/indonesia-pos-machine-market-analysis-forecast-size-trends-and-insights/">IndexBox (2026)</a></span>
     </li>
   </ol>
 </section>
 
 <section>
+  <div class="deco-line"><span class="diamond"></span></div>
   <h2>Pemain Utama</h2>
-  <p class="desc" style="font-size:.95rem">
-    PAX Technology, Verifone, Ingenico (perangkat keras); <strong>Moka POS</strong> &amp; <strong>majoo</strong> (POS cloud lokal &mdash; Moka sendiri menjabi lebih dari 45.000 merchant). Fitur wajib era kini: integrasi QRIS &amp; QRIS TAP (diluncurkan 14 Maret 2025), manajemen stok, dan laporan multi-outlet.
+  <p class="players">
+    <strong>PAX Technology &middot; Verifone &middot; Ingenico</strong> memimpin perangkat keras, sementara <strong>Moka POS</strong> dan <strong>majoo</strong> menjadi andalan POS cloud lokal &mdash; Moka sendiri menjabi lebih dari 45.000 merchant. Fitur wajib era kini: integrasi QRIS &amp; QRIS TAP (diluncurkan 14 Maret 2025), manajemen stok, dan laporan multi-outlet.
   </p>
 </section>
 
 <section>
+  <div class="deco-line"><span class="diamond"></span></div>
   <h2>Kesimpulan</h2>
   <div class="insight">
-    Pasar POS Indonesia tumbuh stabil dua digit (<strong>±10% per tahun</strong>) dan bergeser dari perangkat keras ke <strong>perangkat lunak berbasis cloud</strong>. Adopsi QRIS oleh 39 juta merchant &mdash; mayoritas UMKM &mdash; menjadi mesin pertumbuhan utama: setiap merchant digital adalah calon pelanggan POS. Strategi menang: harga langganan terjangkau, integrasi pembayaran penuh, dan fitur analitik yang mengikat merchant jangka panjang.
+    Pasar POS Indonesia tumbuh stabil dua digit (<strong>&plusmn;10% per tahun</strong>) dan bergeser dari perangkat keras ke <strong>perangkat lunak berbasis cloud</strong>. Adopsi QRIS oleh 39 juta merchant &mdash; mayoritas UMKM &mdash; menjadi mesin pertumbuhan utama: setiap merchant digital adalah calon pelanggan POS. Strategi menang: harga langganan terjangkau, integrasi pembayaran penuh, dan fitur analitik yang mengikat merchant jangka panjang.
   </div>
 </section>
 
 <footer>
-  Data dihimpun 17 November 2026 dari Ken Research, Mordor Intelligence, IndexBox, dan publikasi QRIS/Bank Indonesia. Angka estimasi riset pasar dapat berbeda antar lembaga sesuai metodologi masing-masing.
+  Data dihimpun 17 November 2026 dari Ken Research, Mordor Intelligence, IndexBox, dan publikasi QRIS/Bank Indonesia.
 </footer>
+
+</div>
 
 </body>
 </html>
