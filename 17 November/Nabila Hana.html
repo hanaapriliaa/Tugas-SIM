@@ -1,175 +1,635 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Market Leader POS Indonesia — 17 November</title>
+<title>Market Leader POS Indonesia — 17 November — Nabila Hana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --bg-page: #FAF5FF;
+    --card-bg: #FFFFFF;
+    --text-main: #2D3142;
+    --text-muted: #6B7280;
+    --primary-purple: #8B5CF6;
+    --primary-pink: #EC4899;
+    --pastel-purple: #F3E8FF;
+    --pastel-pink: #FCE7F3;
+    --pastel-yellow: #FEF3C7;
+    --pastel-green: #D1FAE5;
+    --pastel-blue: #E0F2FE;
+    --pastel-orange: #FFEDD5;
+    --accent-peach: #FF8A8A;
+    --border-soft: #EDE9FE;
+    --border-whimsical: #DDD6FE;
+    --shadow-whimsical: 0 16px 36px -8px rgba(139, 92, 246, 0.15), 0 4px 12px rgba(0, 0, 0, 0.03);
+  }
+
   * { margin:0; padding:0; box-sizing:border-box; }
+
   body {
-    font-family: Arial, Helvetica, sans-serif;
-    background:#f4f1ea;
-    color:#1a1a1a;
-    display:flex; justify-content:center; padding:24px;
+    font-family: 'Nunito', sans-serif;
+    background-color: var(--bg-page);
+    background-image: 
+      radial-gradient(#E9D5FF 1.5px, transparent 1.5px),
+      radial-gradient(#FBCFE8 1.5px, var(--bg-page) 1.5px);
+    background-size: 36px 36px;
+    background-position: 0 0, 18px 18px;
+    color: var(--text-main);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px 16px;
   }
+
   .poster {
-    width:100%; max-width:1000px; background:#f4f1ea;
-    border:6px solid #1a1a1a;
-    display:grid;
-    grid-template-columns: 280px 1fr;
-    grid-template-rows: auto auto 1fr auto;
+    width: 100%;
+    max-width: 1080px;
+    background: var(--card-bg);
+    border-radius: 36px;
+    border: 3.5px solid #F3E8FF;
+    box-shadow: var(--shadow-whimsical);
+    display: grid;
+    grid-template-columns: 310px 1fr;
+    grid-template-rows: auto auto auto auto;
+    overflow: hidden;
+    position: relative;
   }
+
+  /* Whimsical Floating Background Accents */
+  .poster::before {
+    content: "✨";
+    position: absolute;
+    top: 24px;
+    right: 28px;
+    font-size: 26px;
+    opacity: 0.8;
+    z-index: 2;
+  }
+
   /* ---------- HEADER ---------- */
   header {
-    grid-column:1/3; background:#d5382e; color:#f4f1ea;
-    padding:36px 40px; border-bottom:6px solid #1a1a1a;
-    position:relative; overflow:hidden;
+    grid-column: 1 / 3;
+    background: linear-gradient(135deg, #FFF1F2 0%, #FAF5FF 50%, #EFF6FF 100%);
+    padding: 36px 44px;
+    border-bottom: 3px dashed var(--border-whimsical);
+    position: relative;
+    overflow: hidden;
   }
-  header .circle {
-    position:absolute; right:-60px; top:-60px; width:220px; height:220px;
-    background:#1b3d8f; border-radius:50%; border:5px solid #1a1a1a;
+
+  .header-decor-circle {
+    position: absolute;
+    top: -50px;
+    right: -40px;
+    width: 190px;
+    height: 190px;
+    background: linear-gradient(135deg, #FDE047, #F472B6);
+    border-radius: 50%;
+    opacity: 0.25;
+    filter: blur(2px);
   }
-  header .bar {
-    position:absolute; right:60px; bottom:-30px; width:60px; height:150px;
-    background:#f2c318; border:5px solid #1a1a1a; transform:rotate(30deg);
+
+  .header-decor-blob {
+    position: absolute;
+    bottom: -30px;
+    right: 140px;
+    width: 110px;
+    height: 110px;
+    background: linear-gradient(135deg, #A78BFA, #38BDF8);
+    border-radius: 63% 37% 54% 46% / 55% 48% 52% 45%;
+    opacity: 0.22;
   }
-  h1 { font-size:52px; letter-spacing:2px; line-height:1; text-transform:uppercase; }
-  .subtitle { margin-top:14px; font-size:16px; letter-spacing:3px; text-transform:uppercase; }
+
+  .header-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFFFFF;
+    color: var(--primary-purple);
+    font-size: 12.5px;
+    font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 2px solid var(--border-soft);
+    box-shadow: 0 4px 10px rgba(139, 92, 246, 0.08);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: 'Fredoka', cursive;
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.15;
+    color: #1E1B4B;
+    letter-spacing: 0.5px;
+    position: relative;
+    z-index: 1;
+  }
+
+  h1 .highlight {
+    background: linear-gradient(120deg, #EC4899, #8B5CF6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .sub-pill {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 5px 14px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .sub-pill-1 { background: #FEF3C7; color: #92400E; }
+  .sub-pill-2 { background: #E0E7FF; color: #3730A3; }
+  .sub-pill-3 { background: #FCE7F3; color: #9D174D; }
 
   /* ---------- LEFT COLUMN ---------- */
   .left {
-    grid-row:2/4; border-right:6px solid #1a1a1a;
-    display:flex; flex-direction:column;
+    grid-row: 2 / 4;
+    border-right: 3px dashed var(--border-whimsical);
+    background: #FCFBFD;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 20px;
+    gap: 18px;
   }
-  .block {
-    padding:26px; border-bottom:6px solid #1a1a1a;
-  }
-  .block:last-child { border-bottom:none; flex:1; }
-  .block h2 {
-    font-size:15px; text-transform:uppercase; letter-spacing:2px;
-    margin-bottom:12px;
-  }
-  .winner {
-    background:#1b3d8f; color:#f4f1ea;
-  }
-  .winner h2 { color:#f2c318; }
-  .winner .name { font-size:34px; font-weight:bold; line-height:1.05; }
-  .winner .tagline { margin-top:10px; font-size:13px; line-height:1.5; }
-  .why li {
-    font-size:12.5px; line-height:1.5; margin-bottom:8px;
-    list-style:none; padding-left:16px; position:relative;
-  }
-  .why li::before {
-    content:""; position:absolute; left:0; top:5px;
-    width:7px; height:7px; background:#d5382e;
-  }
-  .tri { display:flex; height:90px; }
-  .tri div { flex:1; border-right:6px solid #1a1a1a; }
-  .tri div:last-child { border-right:none; }
-  .c1 { background:#d5382e; }
-  .c2 { background:#f2c318; }
-  .c3 { background:#1b3d8f; }
 
-  /* ---------- RIGHT COLUMN ---------- */
-  .right { grid-row:2/3; padding:30px 40px; }
-  .right h2 {
-    font-size:14px; text-transform:uppercase; letter-spacing:2px;
-    margin-bottom:16px;
+  .block-card {
+    background: #FFFFFF;
+    border-radius: 24px;
+    padding: 22px;
+    border: 2px solid var(--border-soft);
+    box-shadow: 0 6px 18px rgba(139, 92, 246, 0.06);
+    position: relative;
   }
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  th, td {
-    border:3px solid #1a1a1a; padding:7px 9px; text-align:left;
+
+  .winner-card {
+    background: linear-gradient(145deg, #8B5CF6, #C026D3);
+    color: #FFFFFF;
+    border: none;
+    box-shadow: 0 12px 24px -4px rgba(192, 38, 211, 0.35);
   }
+
+  .winner-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #FEF08A;
+    color: #713F12;
+    font-family: 'Fredoka', cursive;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+
+  .winner-card .name {
+    font-family: 'Fredoka', cursive;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    line-height: 1.1;
+    color: #FFFFFF;
+  }
+
+  .winner-card .tagline {
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #FDF4FF;
+    font-weight: 500;
+  }
+
+  .section-title {
+    font-family: 'Fredoka', cursive;
+    font-size: 18px;
+    color: #3730A3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .why-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .why-list li {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #4B5563;
+    padding-left: 24px;
+    position: relative;
+  }
+
+  .why-list li::before {
+    content: "🌸";
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 13px;
+  }
+
+  .why-list li:nth-child(2)::before { content: "🍰"; }
+  .why-list li:nth-child(3)::before { content: "⭐"; }
+  .why-list li:nth-child(4)::before { content: "🏷️"; }
+  .why-list li:nth-child(5)::before { content: "💡"; }
+
+  .candy-decor {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding: 12px;
+    background: linear-gradient(90deg, #FDF2F8, #EDE9FE, #E0F2FE);
+    border-radius: 18px;
+    font-size: 18px;
+    border: 2px dashed #DDD6FE;
+  }
+
+  /* ---------- RIGHT COLUMN (TABLE) ---------- */
+  .right {
+    grid-row: 2 / 3;
+    padding: 28px 32px;
+  }
+
+  .table-header-wrap {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 16px;
+  }
+
+  .table-header-wrap h2 {
+    font-family: 'Fredoka', cursive;
+    font-size: 22px;
+    color: #1E1B4B;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .table-note {
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary-pink);
+    transform: rotate(-2deg);
+  }
+
+  .table-container {
+    border-radius: 20px;
+    overflow: hidden;
+    border: 2px solid var(--border-soft);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.05);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
   th {
-    background:#1a1a1a; color:#f4f1ea; text-transform:uppercase;
-    letter-spacing:1px; font-size:10.5px;
+    background: linear-gradient(135deg, #F3E8FF, #FCE7F3);
+    color: #4C1D95;
+    font-family: 'Fredoka', cursive;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 2px solid #E9D5FF;
   }
-  tr:nth-child(even) td { background:#e9e4d8; }
 
-  /* ---------- BOTTOM ---------- */
+  td {
+    padding: 9px 13px;
+    border-bottom: 1px solid #F3F4F6;
+    color: #374151;
+    font-weight: 500;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:nth-child(even) td {
+    background: #FAF8FF;
+  }
+
+  tr:hover td {
+    background: #F5EEFF;
+  }
+
+  .badge-pos {
+    font-weight: 800;
+    color: #1E1B4B;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .star-icon {
+    color: #F59E0B;
+    font-size: 13px;
+  }
+
+  .pill-segment {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .seg-fnb { background: #FCE7F3; color: #9D174D; }
+  .seg-umkm { background: #E0E7FF; color: #3730A3; }
+  .seg-mikro { background: #D1FAE5; color: #065F46; }
+  .seg-cafe { background: #FEF3C7; color: #92400E; }
+  .seg-omni { background: #EDE9FE; color: #5B21B6; }
+
+  .pill-price {
+    font-weight: 700;
+    color: #047857;
+    background: #ECFDF5;
+    padding: 3px 8px;
+    border-radius: 8px;
+    display: inline-block;
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+
+  .pill-price.free {
+    color: #B45309;
+    background: #FFFBEB;
+  }
+
+  /* ---------- BOTTOM SOURCES ---------- */
   .sources {
-    grid-column:2/3; padding:24px 40px;
-    border-top:6px solid #1a1a1a; background:#f2c318;
+    grid-column: 2 / 3;
+    padding: 22px 32px;
+    border-top: 3px dashed var(--border-whimsical);
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
   }
-  .sources h2 { font-size:12px; text-transform:uppercase; letter-spacing:2px; margin-bottom:8px; }
-  .sources p { font-size:11px; line-height:1.6; }
+
+  .sources h2 {
+    font-family: 'Fredoka', cursive;
+    font-size: 15px;
+    color: #92400E;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .sources-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+
+  .source-item {
+    font-size: 11px;
+    color: #78350F;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid #FDE68A;
+    font-weight: 600;
+  }
+
+  /* ---------- FOOTER ---------- */
   footer {
-    grid-column:1/3; background:#1a1a1a; color:#f4f1ea;
-    display:flex; justify-content:space-between; align-items:center;
-    padding:14px 40px; font-size:12px; letter-spacing:2px; text-transform:uppercase;
+    grid-column: 1 / 3;
+    background: linear-gradient(90deg, #1E1B4B 0%, #312E81 100%);
+    color: #FDF4FF;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 40px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
   }
-  footer .dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#d5382e; margin-right:8px; }
-  @media (max-width:760px){
-    .poster { grid-template-columns:1fr; }
-    .left, .right, .sources { grid-column:1/2; }
-    .left { grid-row:auto; border-right:none; border-bottom:6px solid #1a1a1a; }
-    h1 { font-size:34px; }
+
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Fredoka', cursive;
+    font-size: 14px;
+    color: #FDE047;
+  }
+
+  /* Responsive & Print styles */
+  @media (max-width: 820px) {
+    .poster { grid-template-columns: 1fr; border-radius: 24px; }
+    .left, .right, .sources { grid-column: 1 / 2; }
+    .left { grid-row: auto; border-right: none; border-bottom: 3px dashed var(--border-whimsical); }
+    h1 { font-size: 32px; }
+    .right { padding: 20px; }
+  }
+
+  @media print {
+    body { background: none; padding: 0; }
+    .poster { border: none; box-shadow: none; border-radius: 0; max-width: 100%; }
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 </style>
 </head>
 <body>
+
 <div class="poster">
 
+  <!-- HEADER -->
   <header>
-    <div class="circle"></div>
-    <div class="bar"></div>
-    <h1>Market Leader<br>POS Indonesia</h1>
-    <div class="subtitle">Ringkasan 1 Halaman &nbsp;·&nbsp; Riset 10 Sumber &nbsp;·&nbsp; 2026</div>
+    <div class="header-decor-circle"></div>
+    <div class="header-decor-blob"></div>
+    
+    <div class="header-tag">
+      <span>✨</span> Riset Sistem Informasi Manajemen
+    </div>
+    
+    <h1>Market Leader <span class="highlight">POS Indonesia</span></h1>
+    
+    <div class="subtitle-pills">
+      <span class="sub-pill sub-pill-1">📄 Ringkasan 1 Halaman</span>
+      <span class="sub-pill sub-pill-2">🔍 Riset 10 Sumber Kredibel</span>
+      <span class="sub-pill sub-pill-3">📅 Edisi 2026</span>
+    </div>
   </header>
 
+  <!-- LEFT ASIDE -->
   <aside class="left">
-    <div class="block winner">
-      <h2>Pilihan Terbaik</h2>
+    <div class="block-card winner-card">
+      <div class="winner-badge">👑 Pilihan Terbaik</div>
       <div class="name">MOKA POS</div>
-      <div class="tagline">(GoTo Financial) — pemimpin pasar F&amp;B &amp; retail, keseimbangan terbaik antara fitur, ekosistem, dan adopsi pasar.</div>
+      <div class="tagline">
+        <strong>(GoTo Financial)</strong> — Pemimpin pasar F&amp;B &amp; retail dengan keseimbangan terbaik antara kelengkapan fitur, ekosistem pembayaran, dan adopsi pasar di Indonesia.
+      </div>
     </div>
-    <div class="block why">
-      <h2>Mengapa Moka?</h2>
-      <ul>
-        <li>Ekosistem GoTo: integrasi GoFood, GoPay &amp; QRIS.</li>
-        <li>Fitur F&amp;B matang: QR order, manajemen meja, inventori, CRM 50 ribu kontak.</li>
-        <li>Adopsi luas &amp; rekam jejak paling lama di kelas cloud POS (sejak 2014).</li>
-        <li>Harga transparan: Rp299rb–Rp799rb/outlet/bulan.</li>
-        <li>Trade-off: fitur lanjutan di tier atas; kurang ideal untuk usaha mikro sangat kecil.</li>
+
+    <div class="block-card">
+      <h2 class="section-title">✨ Mengapa Moka?</h2>
+      <ul class="why-list">
+        <li><strong>Ekosistem GoTo:</strong> Integrasi langsung GoFood, GoPay &amp; QRIS.</li>
+        <li><strong>Fitur F&amp;B Matang:</strong> QR order meja, manajemen resep &amp; stok, CRM hingga 50.000 kontak.</li>
+        <li><strong>Adopsi Sangat Luas:</strong> Rekam jejak paling panjang di kelas cloud POS (sejak 2014).</li>
+        <li><strong>Harga Transparan:</strong> Mulai Rp299rb–Rp799rb / outlet / bulan.</li>
+        <li><strong>Trade-off:</strong> Fitur terlengkap ada di tier atas; kurang ekonomis untuk ultra-mikro.</li>
       </ul>
     </div>
-    <div class="block" style="padding:0;">
-      <div class="tri"><div class="c1"></div><div class="c2"></div><div class="c3"></div></div>
+
+    <div class="candy-decor">
+      <span>🍭</span>
+      <span>🌸</span>
+      <span>✨</span>
+      <span>🎈</span>
+      <span>🎀</span>
     </div>
   </aside>
 
+  <!-- RIGHT MAIN -->
   <main class="right">
-    <h2>10 Pemimpin Pasar &amp; Posisinya</h2>
-    <table>
-      <tr><th>POS</th><th>Segmen</th><th>Harga Mulai</th><th>Kekuatan Utama</th></tr>
-      <tr><td><b>Moka POS</b></td><td>F&amp;B/Retail menengah</td><td>Rp299rb/bln</td><td>Ekosistem GoTo, QR order, CRM</td></tr>
-      <tr><td>Majoo</td><td>UMKM multi-outlet</td><td>Rp249rb/outlet</td><td>All-in-one mini-ERP, payroll</td></tr>
-      <tr><td>Mekari POS</td><td>Retail &amp; F&amp;B</td><td>Rp149rb/bln</td><td>Integrasi akuntansi Mekari Jurnal</td></tr>
-      <tr><td>Qasir</td><td>Mikro</td><td>Gratis / Rp699rb/thn</td><td>Gratis selamanya, adopsi masif</td></tr>
-      <tr><td>Pawoon</td><td>Kafe &amp; warung</td><td>Rp149rb/bln</td><td>Paket gratis, multi-outlet</td></tr>
-      <tr><td>Kasir Pintar</td><td>Mikro-kecil</td><td>Gratis / Rp55rb/bln</td><td>1jt+ pengguna, termurah</td></tr>
-      <tr><td>Olsera</td><td>Retail omnichannel</td><td>~Rp107rb/bln</td><td>Integrasi marketplace &amp; akuntansi</td></tr>
-      <tr><td>iReap POS</td><td>Retail, multi-gudang</td><td>Rp41rb/bln</td><td>Stok multi-gudang kuat</td></tr>
-      <tr><td>iSeller</td><td>Omnichannel</td><td>Rp200rb/bln</td><td>Online–offline terintegrasi</td></tr>
-      <tr><td>ESB POS</td><td>F&amp;B / restoran</td><td>Gratis (Basic)</td><td>Ekosistem kuliner (KDS, kiosk, hotel)</td></tr>
-    </table>
+    <div class="table-header-wrap">
+      <h2>🏆 10 Pemimpin Pasar &amp; Posisinya</h2>
+      <span class="table-note">★ Matriks Perbandingan Lengkap</span>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>POS</th>
+            <th>Segmen Utama</th>
+            <th>Harga Mulai</th>
+            <th>Kekuatan Utama</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="badge-pos"><span class="star-icon">★</span> Moka POS</div></td>
+            <td><span class="pill-segment seg-fnb">F&amp;B &amp; Retail Menengah</span></td>
+            <td><span class="pill-price">Rp299rb/bln</span></td>
+            <td>Ekosistem GoTo, QR order, CRM canggih</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">Majoo</div></td>
+            <td><span class="pill-segment seg-umkm">UMKM Multi-outlet</span></td>
+            <td><span class="pill-price">Rp249rb/outlet</span></td>
+            <td>All-in-one mini-ERP, modul payroll</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">Mekari POS</div></td>
+            <td><span class="pill-segment seg-fnb">Retail &amp; F&amp;B</span></td>
+            <td><span class="pill-price">Rp149rb/bln</span></td>
+            <td>Integrasi akuntansi Mekari Jurnal</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">Qasir</div></td>
+            <td><span class="pill-segment seg-mikro">Usaha Mikro</span></td>
+            <td><span class="pill-price free">Gratis / Rp699rb/th</span></td>
+            <td>Paket gratis selamanya, adopsi masif</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">Pawoon</div></td>
+            <td><span class="pill-segment seg-cafe">Kafe &amp; Warung</span></td>
+            <td><span class="pill-price">Rp149rb/bln</span></td>
+            <td>Tersedia paket gratis, multi-outlet mudah</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">Kasir Pintar</div></td>
+            <td><span class="pill-segment seg-mikro">Mikro-Kecil</span></td>
+            <td><span class="pill-price free">Gratis / Rp55rb/bln</span></td>
+            <td>1jt+ pengguna, paket berbayar termurah</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">Olsera</div></td>
+            <td><span class="pill-segment seg-omni">Retail Omnichannel</span></td>
+            <td><span class="pill-price">~Rp107rb/bln</span></td>
+            <td>Integrasi marketplace &amp; akuntansi</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">iReap POS</div></td>
+            <td><span class="pill-segment seg-omni">Retail Multi-gudang</span></td>
+            <td><span class="pill-price">Rp41rb/bln</span></td>
+            <td>Kontrol stok &amp; multi-gudang sangat kuat</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">iSeller</div></td>
+            <td><span class="pill-segment seg-omni">Omnichannel</span></td>
+            <td><span class="pill-price">Rp200rb/bln</span></td>
+            <td>Sinkronisasi online-offline terpadu</td>
+          </tr>
+          <tr>
+            <td><div class="badge-pos">ESB POS</div></td>
+            <td><span class="pill-segment seg-fnb">F&amp;B / Restoran Besar</span></td>
+            <td><span class="pill-price free">Gratis (Basic)</span></td>
+            <td>Ekosistem kuliner terintegrasi (KDS &amp; Kiosk)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </main>
 
+  <!-- BOTTOM SOURCES -->
   <section class="sources">
-    <h2>10 Sumber Riset</h2>
-    <p>
-      1. HashMicro — 21 Software POS Terbaik 2026 &nbsp;·&nbsp; 2. Total ERP — 20 Aplikasi POS Terbaik &nbsp;·&nbsp;
-      3. Mekari Desty — 15 Aplikasi Kasir Terbaik &nbsp;·&nbsp; 4. ScaleOcean — 16 Aplikasi Kasir 2026 &nbsp;·&nbsp;
-      5. Omni (Stamps) — Best POS in Indonesia &nbsp;·&nbsp; 6. Skoci POS — Perbandingan Harga 2026 &nbsp;·&nbsp;
-      7. FounderPlus — 8 Aplikasi Kasir UKM &nbsp;·&nbsp; 8. Kasirnesia — 10 Aplikasi Kasir Terbaik &nbsp;·&nbsp;
-      9. Synetica — POS Software Guide &nbsp;·&nbsp; 10. HitPay — POS Systems in Indonesia
-    </p>
+    <h2>📚 10 Sumber Riset Rujukan</h2>
+    <div class="sources-grid">
+      <span class="source-item">1. HashMicro (21 Software POS 2026)</span>
+      <span class="source-item">2. Total ERP (20 Aplikasi POS Terbaik)</span>
+      <span class="source-item">3. Mekari Desty (15 Aplikasi Kasir Terbaik)</span>
+      <span class="source-item">4. ScaleOcean (16 Aplikasi Kasir 2026)</span>
+      <span class="source-item">5. Omni Stamps (Best POS in Indonesia)</span>
+      <span class="source-item">6. Skoci POS (Perbandingan Harga 2026)</span>
+      <span class="source-item">7. FounderPlus (8 Aplikasi Kasir UKM)</span>
+      <span class="source-item">8. Kasirnesia (10 Aplikasi Kasir Terbaik)</span>
+      <span class="source-item">9. Synetica (POS Software Guide)</span>
+      <span class="source-item">10. HitPay (POS Systems in Indonesia)</span>
+    </div>
   </section>
 
+  <!-- FOOTER -->
   <footer>
-    <span><span class="dot"></span>17 November</span>
+    <div class="footer-left">
+      <span>🌸</span>
+      <span>Tugas Sistem Informasi Manajemen · 17 November</span>
+    </div>
+    <div class="footer-right">
+      <span>✨ Nabila Hana ✨</span>
+    </div>
   </footer>
 
 </div>
+
 </body>
 </html>
