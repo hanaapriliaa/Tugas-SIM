@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>One Page Summary — Top 10 POS Software Indonesia 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#141419;
+    --ink-soft:#3c3c46;
+    --muted:#6b6b76;
+    --faint:#9a9aa4;
+    --paper:#fbfaf8;
+    --line:#141419;
+    --line-soft:#d8d5cf;
+    --pink:#ffc9d8;
+    --sky:#bfe0fb;
+    --mint:#cdeed3;
+    --lilac:#ded4fa;
+    --peach:#ffe3bd;
+    --rose:#e8567e;
+    --blue:#4a7fe0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  body{
+    background:#e6e4e0;
+    font-family:'Inter',system-ui,sans-serif;
+    color:var(--ink);
+    font-size:13px;
+    display:flex;justify-content:center;padding:36px 18px;
+    overflow-x:auto;
+  }
+  .sheet{
+    width:1280px;
+    background:linear-gradient(160deg,#fdfcfb 0%,#fdf4f6 26%,#f3f8fd 62%,#f3faf3 100%);
+    padding:46px 52px 34px;
+    box-shadow:0 30px 70px rgba(20,20,25,.16);
+    position:relative;overflow:hidden;
+  }
+  .sheet::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:8px;
+    background:linear-gradient(90deg,var(--pink),var(--lilac) 30%,var(--sky) 58%,var(--mint) 80%,var(--peach));
+  }
+
+  /* ============ MASTHEAD ============ */
+  header{
+    display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;
+    border-bottom:3px solid var(--line);padding-bottom:22px;
+  }
+  .kicker{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--muted);display:flex;align-items:center;gap:10px;
+  }
+  .kicker::before{content:"";width:26px;height:2px;background:var(--rose);display:inline-block}
+  h1{
+    font-family:'Archivo',sans-serif;
+    font-weight:800;font-size:54px;line-height:1.0;
+    letter-spacing:-.035em;margin-top:14px;color:var(--ink);
+  }
+  h1 .grad{
+    background:linear-gradient(92deg,var(--rose),var(--blue));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .subtitle{
+    margin-top:10px;font-size:14px;line-height:1.6;color:var(--ink-soft);max-width:640px;
+  }
+  .mast-right{
+    text-align:right;font-family:'IBM Plex Mono',monospace;
+    font-size:12px;line-height:2.0;color:var(--muted);
+    border-left:1px solid var(--line-soft);padding-left:28px;
+  }
+  .mast-right b{color:var(--ink);font-weight:600}
+
+  /* ============ META STRIP ============ */
+  .meta{
+    display:grid;grid-template-columns:repeat(5,1fr);
+    border-bottom:1px solid var(--line);
+  }
+  .meta div{
+    padding:14px 18px 12px;border-right:1px solid var(--line-soft);
+  }
+  .meta div:first-child{padding-left:0}
+  .meta div:last-child{border-right:none}
+  .meta .num{
+    font-family:'Archivo',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em;
+    background:linear-gradient(120deg,var(--rose),var(--blue));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .meta .lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+  /* ============ LAYOUT ============ */
+  .grid{display:grid;grid-template-columns:1fr 348px;gap:32px;margin-top:22px}
+  .col-left{min-width:0}
+
+  .sec-label{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;padding:6px 12px;background:var(--ink);color:#fff;
+    display:inline-block;margin-bottom:14px;border-radius:2px;
+  }
+
+  /* ---- RANKING TABLE ---- */
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  col.c-rk{width:46px}
+  col.c-name{width:172px}
+  col.c-chip{width:118px}
+  thead th{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:500;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+    text-align:left;padding:0 10px 8px;border-bottom:1px solid var(--line);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  thead th:first-child{padding-left:0;text-align:right}
+  thead th:last-child{text-align:center}
+  tbody td{
+    padding:11px 10px;border-bottom:1px solid var(--line-soft);
+    vertical-align:top;line-height:1.55;word-wrap:break-word;overflow-wrap:break-word;
+  }
+  tbody td:first-child{padding-left:0}
+  tbody td:last-child{padding-right:0;text-align:center;vertical-align:middle}
+  tr.r1 td{
+    background:linear-gradient(90deg,rgba(255,201,216,.42),rgba(191,224,251,.30));
+    border-top:2px solid var(--line);border-bottom:2px solid var(--line);
+  }
+  tr.r1 td:first-child{border-left:2px solid var(--line);padding-left:8px}
+  tr.r1 td:last-child{border-right:2px solid var(--line)}
+  .rk{
+    font-family:'Archivo',sans-serif;font-size:25px;font-weight:700;
+    letter-spacing:-.03em;color:var(--ink);text-align:right;line-height:1.2;
+    white-space:nowrap;
+  }
+  tr.r1 .rk{color:var(--rose)}
+  .name{font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.015em;line-height:1.25}
+  .name small{
+    display:block;font-family:'IBM Plex Mono',monospace;font-weight:400;
+    font-size:10.5px;color:var(--muted);margin-top:4px;letter-spacing:.02em;
+  }
+  .desc{font-size:12.5px;color:var(--ink-soft)}
+  .desc b{color:var(--ink);font-weight:600}
+  .chip{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;
+    font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    padding:5px 10px;border-radius:999px;border:1px solid rgba(20,20,25,.28);
+    white-space:nowrap;
+  }
+  .c1{background:var(--pink)} .c2{background:var(--sky)} .c3{background:var(--mint)}
+  .c4{background:var(--lilac)} .c5{background:var(--peach)}
+
+  /* ============ SIDEBAR ============ */
+  .col-right{display:flex;flex-direction:column;gap:22px}
+  .card{
+    background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;
+  }
+  .winner{box-shadow:6px 6px 0 rgba(20,20,25,.88)}
+  .winner .head{
+    background:linear-gradient(115deg,var(--pink),var(--sky));
+    padding:16px 18px 14px;border-bottom:2px solid var(--line);
+  }
+  .winner .tag{
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:600;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  .winner h2{
+    font-family:'Archivo',sans-serif;font-size:30px;font-weight:800;
+    letter-spacing:-.03em;margin-top:6px;line-height:1.1;
+  }
+  .winner .sub{font-size:12px;color:var(--ink-soft);margin-top:3px}
+  .winner .body{padding:15px 18px 17px}
+  .winner .lede{font-size:12.5px;line-height:1.6;color:var(--ink-soft)}
+  .winner .lede b{color:var(--ink)}
+  .reasons{list-style:none;margin-top:11px}
+  .reasons li{
+    padding:8px 0 8px 22px;position:relative;font-size:12px;line-height:1.55;
+    color:var(--ink-soft);border-top:1px dotted #c4c1ba;
+  }
+  .reasons li::before{
+    content:attr(data-n);position:absolute;left:0;top:9px;
+    font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;color:var(--rose);
+  }
+  .reasons li b{color:var(--ink);font-weight:600}
+
+  /* scoring bars */
+  .card .card-head{
+    padding:12px 16px;border-bottom:1px solid var(--line-soft);
+    font-family:'Archivo',sans-serif;font-weight:700;font-size:13.5px;
+    letter-spacing:.02em;text-transform:uppercase;
+  }
+  .card .card-head span{
+    font-family:'IBM Plex Mono',monospace;font-weight:400;font-size:10px;
+    color:var(--muted);letter-spacing:.05em;display:block;margin-top:4px;text-transform:none;
+    line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .bars{padding:14px 16px 12px}
+  .bar{display:grid;grid-template-columns:98px 1fr 30px;gap:10px;align-items:center;margin-bottom:9px}
+  .bar .bl{font-size:11.5px;font-weight:500;color:var(--ink-soft)}
+  .track{height:8px;background:#ebe8e3;border-radius:99px;overflow:hidden}
+  .fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--rose),var(--blue))}
+  .fill.alt{background:linear-gradient(90deg,#6fc38a,#5aa8d8)}
+  .val{font-family:'IBM Plex Mono',monospace;font-size:11px;text-align:right;color:var(--muted)}
+
+  /* criteria */
+  .crit{padding:14px 16px 16px}
+  .crit-row{
+    display:grid;grid-template-columns:1fr auto;gap:10px;align-items:baseline;
+    padding:7px 0;border-top:1px dotted #c4c1ba;font-size:12px;
+  }
+  .crit-row:first-child{border-top:none;padding-top:0}
+  .crit-row .cl{font-weight:600;color:var(--ink);line-height:1.4}
+  .crit-row .cl span{display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+  .crit-row .w{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--blue);font-weight:600;white-space:nowrap}
+
+  /* market insight */
+  .insight{padding:15px 16px 17px;font-size:12px;line-height:1.65;color:var(--ink-soft)}
+  .insight p+p{margin-top:8px}
+  .insight b{color:var(--ink);font-weight:600}
+  .price-note{
+    margin-top:10px;padding:9px 11px;border-radius:4px;
+    background:linear-gradient(90deg,rgba(255,227,189,.5),rgba(205,238,211,.4));
+    font-size:11.5px;line-height:1.55;color:var(--ink-soft);
+  }
+
+  /* ============ FOOTER ============ */
+  footer{
+    margin-top:26px;border-top:2px solid var(--line);padding-top:16px;
+    display:grid;grid-template-columns:1fr auto;gap:28px;align-items:start;
+  }
+  .conclusion{
+    font-size:12.5px;line-height:1.65;color:var(--ink-soft);max-width:900px;
+  }
+  .conclusion b{color:var(--ink)}
+  .sources{
+    margin-top:12px;font-family:'IBM Plex Mono',monospace;
+    font-size:10px;line-height:1.9;color:var(--muted);
+  }
+  .sources b{color:var(--ink);font-weight:600;letter-spacing:.16em}
+  .stamp{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.8}
+  .stamp .blk{
+    display:inline-block;width:58px;height:58px;margin-left:10px;vertical-align:middle;
+    background:conic-gradient(from 210deg,var(--pink),var(--sky),var(--mint),var(--peach),var(--lilac),var(--pink));
+    border-radius:3px;
+  }
+  .stamp b{color:var(--ink);font-weight:600}
+  @page{size:1340px 2360px;margin:0}
+  @media print{
+    body{background:#fff;padding:0}
+    .sheet{box-shadow:none;zoom:1!important;width:1280px;padding:36px 44px 28px}
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- MASTHEAD -->
+  <header>
+    <div>
+      <div class="kicker">Riset Pasar &nbsp;·&nbsp; Software Point of Sale &nbsp;·&nbsp; Indonesia</div>
+      <h1>TOP 10 <span class="grad">POS SOFTWARE</span><br>INDONESIA 2026</h1>
+      <p class="subtitle">
+        Hasil riset perbandingan <b>12 sumber kredibel</b> — portal teknologi, media bisnis, dan platform analitik vendor-neutral —
+        untuk mengidentifikasi 10 <i>market leader</i> software Point of Sale (POS) di Indonesia,
+        disertai penentuan software terbaik beserta alasannya.
+      </p>
+    </div>
+    <div class="mast-right">
+      <b>ONE PAGE SUMMARY</b><br>
+      Metode &nbsp;: Analisis kualitatif–kuantitatif<br>
+      Sumber &nbsp;&nbsp;&nbsp;: 12 referensi kredibel<br>
+      Periode &nbsp;&nbsp;: Data 2024 – 2026<br>
+      Desain &nbsp;&nbsp;&nbsp;: Neo-Swiss Minimalist
+    </div>
+  </header>
+
+  <!-- META STRIP -->
+  <div class="meta">
+    <div><div class="num">12</div><div class="lbl">Sumber Referensi</div></div>
+    <div><div class="num">10</div><div class="lbl">Market Leader Dianalisis</div></div>
+    <div><div class="num">35 rb+</div><div class="lbl">Merchant Moka POS</div></div>
+    <div><div class="num">6</div><div class="lbl">Kriteria Evaluasi</div></div>
+    <div><div class="num">Rp55–599K</div><div class="lbl">Rentang Harga / bln</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="grid">
+
+    <!-- LEFT : RANKING -->
+    <div class="col-left">
+      <div class="sec-label">Peringkat Top 10 — Sintesis 12 Sumber</div>
+      <table>
+        <colgroup><col class="c-rk"><col class="c-name"><col><col class="c-chip"></colgroup>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Software</th>
+            <th>Profil &amp; Analisis</th>
+            <th>Posisi</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr class="r1">
+            <td><div class="rk">01</div></td>
+            <td>
+              <div class="name">Moka POS <small>PT Moka · GoTo Financial · sejak 2013 · Jakarta</small></div>
+            </td>
+            <td class="desc">
+              <b>Leader pasar absolut.</b> Diakuisisi Gojek ±US$130 jt (2020), kini bagian GoTo Financial dengan 35.000+ merchant dan 800 karyawan.
+              Integrasi pembayaran terlengkap (QRIS, GoPay, e-wallet, kartu debit/kredit), inventori &amp; laporan real-time,
+              produk pinjaman usaha Moka Capital, dan hardware premium Moka Prime (2024). Cocok lintas segmen: warung hingga retail multi-cabang.
+            </td>
+            <td><span class="chip c1">★ Best Pick</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">02</div></td>
+            <td>
+              <div class="name">Majoo POS <small>Grup Akulaku · sejak 2019</small></div>
+            </td>
+            <td class="desc">
+              <b>Champion segmen F&amp;B.</b> Dipakai 30.000+ UMKM; unggul pada restoran/kafe: kitchen display, rekap omzet harian per brand,
+              dan bundling internet Telkom Indonesia. Paket berjenjang Rp149K–599K/bln (Starter–Prime) sehingga fleksibel untuk bisnis yang tumbuh.
+            </td>
+            <td><span class="chip c2">F&amp;B Champion</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">03</div></td>
+            <td>
+              <div class="name">Olsera POS <small>PT Prima Infotama</small></div>
+            </td>
+            <td class="desc">
+              <b>Terbaik untuk retail multi-channel.</b> Integrasi akuntansi, marketplace, dan e-commerce; transfer stok antar-cabang
+              serta sinkronisasi real-time. Konsisten masuk top-3 pada hampir semua perbandingan retail; harga ±Rp1,29 jt/tahun.
+            </td>
+            <td><span class="chip c3">Retail Omni</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">04</div></td>
+            <td>
+              <div class="name">Qasir <small>PT Quadran · Jakarta</small></div>
+            </td>
+            <td class="desc">
+              <b>Hero usaha mikro.</b> Ringan, murah, dan mudah diadopsi; sinkronisasi offline–online, QRIS native, dan onboarding cepat.
+              Direkomendasikan untuk pemilik warung yang baru beralih dari pencatatan manual ke kasir digital tanpa biaya awal.
+            </td>
+            <td><span class="chip c4">Mikro Hero</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">05</div></td>
+            <td>
+              <div class="name">iReap POS Pro <small>PT Duta Media Cipta</small></div>
+            </td>
+            <td class="desc">
+              <b>Andal mode offline.</b> Multi-gudang, transfer stok antar cabang, recipe/BOM untuk resto. Versi Lite gratis,
+              Pro ±Rp99K/bln. Kekurangan: UI kurang modern dan Lite sangat terbatas — tetap unggul untuk lokasi dengan internet tidak stabil.
+            </td>
+            <td><span class="chip c5">Offline Pro</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">06</div></td>
+            <td>
+              <div class="name">Kasir Pintar <small>KasirPintar.co · sejak 2016</small></div>
+            </td>
+            <td class="desc">
+              <b>Best value.</b> Lebih dari 1 juta pemilik usaha; versi gratis seumur hidup + fitur PPOB (pulsa/tagihan).
+              Pro ±Rp55K/bln — termurah di kelas Pro. Cocok untuk UMKM kecil dengan anggaran ketat namun tetap butuh kontrol stok.
+            </td>
+            <td><span class="chip c1">Best Value</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">07</div></td>
+            <td>
+              <div class="name">Pawoon <small>PT Pawoon Indonesia · IDX-listed</small></div>
+            </td>
+            <td class="desc">
+              <b>Fit untuk franchise &amp; multi-outlet.</b> Cloud POS dengan inventori, manajemen pelanggan, dan laporan per-outlet;
+              harga mulai ±Rp299K/bln. Sering direkomendasikan untuk kafe/resto menengah yang butuh keseimbangan harga–fitur.
+            </td>
+            <td><span class="chip c2">Franchise Fit</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">08</div></td>
+            <td>
+              <div class="name">iSeller <small>PT Jaringan Rel Colorado</small></div>
+            </td>
+            <td class="desc">
+              <b>Omnichannel end-to-end.</b> POS + webstore + integrasi marketplace (Shopee/Tokopedia) + QRIS dalam satu platform;
+              kuat untuk retail menengah dengan banyak SKU yang menjual online maupun offline sekaligus.
+            </td>
+            <td><span class="chip c3">Omnichannel</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">09</div></td>
+            <td>
+              <div class="name">ESB POS <small>Eka Software · Jakarta</small></div>
+            </td>
+            <td class="desc">
+              <b>Ekosistem F&amp;B skala besar.</b> Satu suite: ESB POS, ESB Order (self-order), ESB Kitchen, dan loop program loyalty;
+              dirancang untuk restoran multi-cabang dengan model dine-in + delivery + take-away.
+            </td>
+            <td><span class="chip c4">Enterprise F&amp;B</span></td>
+          </tr>
+
+          <tr>
+            <td><div class="rk">10</div></td>
+            <td>
+              <div class="name">Loyverse POS <small>Global · HQ Hong Kong</small></div>
+            </td>
+            <td class="desc">
+              <b>Free tier terbaik.</b> Jutaan pengguna global; mengubah smartphone/tablet menjadi kasir lengkap dengan inventori &amp; analitik dasar,
+              tanpa biaya bulanan. Kekurangan: dukungan lokal terbatas dan fitur lanjutan berbayar via add-on.
+            </td>
+            <td><span class="chip c5">Free Tier</span></td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+
+    <!-- RIGHT : SIDEBAR -->
+    <div class="col-right">
+
+      <div class="card winner">
+        <div class="head">
+          <div class="tag">★ Best Pick — Software Terbaik</div>
+          <h2>Moka POS</h2>
+          <div class="sub">GoTo Financial · 35.000+ merchant · Indonesia &amp; ekspansi Asia</div>
+        </div>
+        <div class="body">
+          <p class="lede">
+            <b>Mengapa Moka POS terpilih sebagai No. 1?</b>
+            Tidak ada pesaing yang menggabungkan skala, stabilitas keuangan, dan kelengkapan ekosistem sebesar Moka.
+          </p>
+          <ul class="reasons">
+            <li data-n="1"><b>Skala &amp; kredibilitas tertinggi</b> — 35.000+ merchant, diakuisisi Gojek/GoTo ±US$130 jt; akses modal &amp; talenta terbesar di kelasnya.</li>
+            <li data-n="2"><b>Pembayaran terlengkap</b> — QRIS, GoPay, e-wallet, kartu debit/kredit; ditegaskan resmi oleh GoTo Financial bahwa semua metode didukung.</li>
+            <li data-n="3"><b>Ekosistem menyeluruh</b> — POS, inventori, payroll, CRM, Moka Capital (pinjaman usaha), app marketplace, dan hardware premium Moka Prime.</li>
+            <li data-n="4"><b>Bukti pasar</b> — muncul sebagai benchmark di 12/12 sumber riset; frekuensi rekomendasi tertinggi jauh di atas kompetitor.</li>
+            <li data-n="5"><b>Fleksibilitas segmen</b> — teruji dari warung mikro hingga jaringan retail multi-cabang, termasuk laporan real-time lintas outlet.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Skor Agregat /100<span>Bobot 6 kriteria × frekuensi rekomendasi 12 sumber</span></div>
+        <div class="bars">
+          <div class="bar"><span class="bl">Moka POS</span><div class="track"><div class="fill" style="width:93%"></div></div><span class="val">93</span></div>
+          <div class="bar"><span class="bl">Majoo POS</span><div class="track"><div class="fill" style="width:88%"></div></div><span class="val">88</span></div>
+          <div class="bar"><span class="bl">Olsera</span><div class="track"><div class="fill" style="width:84%"></div></div><span class="val">84</span></div>
+          <div class="bar"><span class="bl">Qasir</span><div class="track"><div class="fill alt" style="width:81%"></div></div><span class="val">81</span></div>
+          <div class="bar"><span class="bl">iReap POS</span><div class="track"><div class="fill alt" style="width:78%"></div></div><span class="val">78</span></div>
+          <div class="bar"><span class="bl">Kasir Pintar</span><div class="track"><div class="fill" style="width:76%"></div></div><span class="val">76</span></div>
+          <div class="bar"><span class="bl">Pawoon</span><div class="track"><div class="fill" style="width:74%"></div></div><span class="val">74</span></div>
+          <div class="bar"><span class="bl">iSeller</span><div class="track"><div class="fill" style="width:72%"></div></div><span class="val">72</span></div>
+          <div class="bar"><span class="bl">ESB POS</span><div class="track"><div class="fill" style="width:70%"></div></div><span class="val">70</span></div>
+          <div class="bar"><span class="bl">Loyverse</span><div class="track"><div class="fill alt" style="width:67%"></div></div><span class="val">67</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">6 Kriteria Evaluasi</div>
+        <div class="crit">
+          <div class="crit-row"><div class="cl">Pangsa pengguna &amp; pertumbuhan <span>Jumlah merchant aktif, sebaran regional</span></div><div class="w">25%</div></div>
+          <div class="crit-row"><div class="cl">Kelengkapan fitur <span>POS, inventori, laporan, multi-outlet, KDS</span></div><div class="w">20%</div></div>
+          <div class="crit-row"><div class="cl">Integrasi pembayaran <span>QRIS, e-wallet, kartu, offline mode</span></div><div class="w">20%</div></div>
+          <div class="crit-row"><div class="cl">Harga &amp; nilai <span>Transparansi tarif vs fitur per rupiah</span></div><div class="w">15%</div></div>
+          <div class="crit-row"><div class="cl">Dukungan lokal <span>Layanan pelanggan, hardware, training</span></div><div class="w">10%</div></div>
+          <div class="crit-row"><div class="cl">Frekuensi rekomendasi <span>Kemunculan pada 12 sumber riset</span></div><div class="w">10%</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Insight Pasar</div>
+        <div class="insight">
+          <p>
+            Pasar POS Indonesia terfragmentasi oleh <b>segmen harga</b>: Loyverse &amp; Kasir Pintar memimpin tier gratis/termin,
+            Qasir &amp; iReap menguasai usaha mikro, sedangkan Moka, Majoo, dan Olsera bersaing di tier menengah–atas dengan fitur penuh.
+          </p>
+          <p>
+            Tren 2024–2026: <b>konsolidasi oleh pemain besar</b> (GoTo–Moka, Akulaku–Majoo), adopsi <b>QRIS universal</b> akibat regulasi Bank Indonesia,
+            serta permintaan <b>mode offline</b> sebagai pembeda lokal terhadap POS global.
+          </p>
+          <div class="price-note">
+            <b>Rentang harga:</b> Rp0 (gratis) – Rp599K/bulan per outlet, tergantung paket fitur dan jumlah cabang.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div>
+      <p class="conclusion">
+        <b>Kesimpulan —</b> <b>Moka POS</b> adalah software POS terbaik di Indonesia 2026 berdasarkan sintesis 12 sumber:
+        kombinasi pangsa pasar terbesar, dukungan ekosistem GoTo Financial, integrasi pembayaran paling lengkap,
+        dan jejak produk paling inovatif (Moka Prime, Moka Capital). Bagi bisnis dengan kebutuhan spesifik:
+        <b>Majoo</b> untuk restoran/kafe, <b>Olsera</b> untuk retail multi-channel, dan <b>Qasir / Kasir Pintar</b>
+        untuk UMKM mikro yang memprioritaskan biaya. Kesesuaian dengan model operasional bisnis tetap menjadi
+        faktor penentu akhir di luar peringkat ini.
+      </p>
+      <div class="sources">
+        <b>SUMBER (12)</b> &nbsp;1&nbsp;HashMicro · 25 Software POS Terbaik 2026 &nbsp;&nbsp;2&nbsp;ScaleOcean · 19 Aplikasi POS Terbaik 2026 &nbsp;&nbsp;3&nbsp;HitPay · POS Systems in Indonesia: Comparing 7 Popular POS<br>
+        4&nbsp;HitPay · 7 Aplikasi POS Gratis Terbaik Indonesia &nbsp;&nbsp;5&nbsp;Mas-Software · 10 Aplikasi POS Kasir Terbaik &nbsp;&nbsp;6&nbsp;Equiperp · 16 Software POS 2026<br>
+        7&nbsp;FounderPlus · 8 Aplikasi Kasir UKM 2026 &nbsp;&nbsp;8&nbsp;iBOS · Top 10 POS Software in Indonesia &nbsp;&nbsp;9&nbsp;Undercover.co.id · Akuisisi Moka oleh Gojek<br>
+        10&nbsp;Wikipedia ID · Moka (perusahaan) &nbsp;&nbsp;11&nbsp;PosMana &amp; KasPoint · perbandingan POS &amp; minimarket &nbsp;&nbsp;12&nbsp;Jurnal.id &amp; Accurate.id · aplikasi POS untuk bisnis
+      </div>
+    </div>
+    <div class="stamp">
+      <b>DISUSUN</b><br>
+      November 2026<br>
+      One Page Summary · A4
+      <span class="blk"></span>
+    </div>
+  </footer>
+
+</div>
+<script>
+  (function(){
+    var sheet = document.querySelector('.sheet');
+    function fit(){
+      var z = Math.min(1, (window.innerWidth - 24) / 1280);
+      if (z < 0.72) z = 0.72;          /* jangan menyusut terlalu kecil — sisanya scroll horizontal */
+      sheet.style.zoom = z;
+      document.body.style.padding = (16 / z) + 'px ' + (12 / z) + 'px';
+    }
+    window.addEventListener('resize', fit);
+    fit();
+  })();
+</script>
+</body>
+</html>
