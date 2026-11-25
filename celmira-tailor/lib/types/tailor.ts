@@ -75,11 +75,17 @@ export type MeasurementValues = {
   neckCircumference: string;
 };
 
+export type MeasurementStandardKey = keyof MeasurementValues;
+
+export type MeasurementExtraValues = Record<string, string>;
+
 export type CustomerMeasurements = {
   mode: MeasurementInputMode;
   profileId?: string;
   profileName?: string;
+  templateId?: MeasurementTemplateId;
   values: MeasurementValues;
+  extraValues?: MeasurementExtraValues;
   sampleGarmentNote: string;
   fitPreferenceNote: string;
 };
@@ -91,12 +97,73 @@ export type MeasurementTemplateId =
   | "busana-formal"
   | "bawahan";
 
+export type MeasurementMannequinAnchor =
+  | "face"
+  | "neck"
+  | "shoulder"
+  | "bust"
+  | "waist"
+  | "hip"
+  | "sleeve"
+  | "length"
+  | "back-length"
+  | "thigh"
+  | "hem";
+
+export type MeasurementTemplateField = {
+  key: string;
+  storageTarget: "standard" | "extra";
+  standardKey?: MeasurementStandardKey;
+  label: string;
+  shortLabel: string;
+  required: boolean;
+  unit: "cm";
+  min: number;
+  max: number;
+  step: number;
+  defaultValue: number;
+  guideTitle: string;
+  guideSteps: string[];
+  tip: string;
+  mannequinAnchor: MeasurementMannequinAnchor;
+};
+
+export type MeasurementSizePreset = {
+  id: string;
+  label: string;
+  summary: string;
+  values: Partial<Record<MeasurementStandardKey, number>>;
+  extraValues?: Record<string, number>;
+};
+
+/**
+ * Struktur konfigurasi template ukuran yang dirancang agar
+ * dapat dikelola (tambah/ubah/nonaktifkan) melalui Admin Dashboard
+ * pada tahap pengembangan berikutnya.
+ */
+export type MeasurementTemplateConfig = {
+  id: MeasurementTemplateId;
+  name: string;
+  shortLabel: string;
+  tagline: string;
+  description: string;
+  mannequinType: MeasurementTemplateId;
+  defaultCategoryId: GarmentCategoryId;
+  supportedCategories: GarmentCategoryId[];
+  active: boolean;
+  sortOrder: number;
+  updatedAt: string;
+  fields: MeasurementTemplateField[];
+  sizePresets: MeasurementSizePreset[];
+};
+
 export type MeasurementProfile = {
   id: string;
   label: string;
   templateId: MeasurementTemplateId;
   categoryHint?: GarmentCategoryId;
   values: MeasurementValues;
+  extraValues?: MeasurementExtraValues;
   notes: string;
   updatedAt: string;
 };

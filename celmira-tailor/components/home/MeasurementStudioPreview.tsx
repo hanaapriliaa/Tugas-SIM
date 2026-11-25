@@ -93,7 +93,7 @@ export function MeasurementStudioPreview() {
               <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
             </ButtonLink>
             <span className="text-[0.625rem] uppercase tracking-[0.2em] text-muted">
-              Tahap pengembangan
+              Studio interaktif
             </span>
           </div>
         </div>

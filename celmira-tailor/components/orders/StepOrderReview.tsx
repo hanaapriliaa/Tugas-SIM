@@ -1,6 +1,7 @@
 "use client";
 
 import { celmiraDesignReferences, getCategoryById } from "@/lib/booking-options";
+import { getMeasurementTemplateById } from "@/lib/measurement-studio";
 import type { DesignStudioSavedConfig, OrderDraft } from "@/lib/types/tailor";
 
 type StepOrderReviewProps = {
@@ -31,6 +32,17 @@ export function StepOrderReview({
         ? studioRef?.title ?? "-"
         : draft.customDesignTitle.trim() || "Upload desain custom";
 
+  const extraMeasurementEntries: Array<[string, string]> =
+    draft.measurements.templateId && draft.measurements.extraValues
+      ? getMeasurementTemplateById(draft.measurements.templateId)
+          .fields.filter((field) => field.storageTarget === "extra")
+          .map((field): [string, string] => [
+            field.label,
+            draft.measurements.extraValues?.[field.key] ?? "",
+          ])
+          .filter(([, val]) => val.trim().length > 0)
+      : [];
+
   const measurementEntries = [
     ["Lingkar badan / dada", draft.measurements.values.bust],
     ["Lingkar pinggang", draft.measurements.values.waist],
@@ -39,6 +51,7 @@ export function StepOrderReview({
     ["Panjang lengan", draft.measurements.values.sleeveLength],
     ["Panjang busana", draft.measurements.values.garmentLength],
     ["Lingkar leher", draft.measurements.values.neckCircumference],
+    ...extraMeasurementEntries,
   ].filter(([, val]) => val.trim().length > 0);
 
   return (
@@ -182,14 +195,27 @@ export function StepOrderReview({
             <p className="mt-1 text-muted">{draft.measurements.sampleGarmentNote}</p>
           </div>
         ) : (
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            {measurementEntries.map(([label, val]) => (
-              <div key={label}>
-                <dt className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted">{label}</dt>
-                <dd className="font-medium text-espresso">{val} cm</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="mt-3">
+            {draft.measurements.mode === "profile" && draft.measurements.profileName ? (
+              <p className="mb-3 text-xs text-muted">
+                Profil tersimpan:{" "}
+                <strong className="font-semibold text-espresso">
+                  {draft.measurements.profileName}
+                </strong>
+                {draft.measurements.templateId
+                  ? ` (${getMeasurementTemplateById(draft.measurements.templateId).shortLabel})`
+                  : ""}
+              </p>
+            ) : null}
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              {measurementEntries.map(([label, val]) => (
+                <div key={label}>
+                  <dt className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted">{label}</dt>
+                  <dd className="font-medium text-espresso">{val} cm</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         )}
 
         {draft.measurements.fitPreferenceNote ? (

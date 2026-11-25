@@ -66,10 +66,14 @@ export function CustomerBookingFlow() {
     const designs = loadSavedDesigns();
     const profiles = loadMeasurementProfiles();
 
-    const categoryParam = searchParams.get("category") as GarmentCategoryId | null;
-    const celmiraDesignParam = searchParams.get("celmiraDesignId");
-    const designParam = searchParams.get("designId");
-    const measurementParam = searchParams.get("measurementId");
+    const urlParams =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const getParam = (key: string) => searchParams.get(key) ?? urlParams?.get(key) ?? null;
+
+    const categoryParam = getParam("category") as GarmentCategoryId | null;
+    const celmiraDesignParam = getParam("celmiraDesignId");
+    const designParam = getParam("designId");
+    const measurementParam = getParam("measurementId");
 
     let nextDraft = storedDraft;
 
@@ -114,14 +118,29 @@ export function CustomerBookingFlow() {
     if (measurementParam) {
       const profile = profiles.find((item) => item.id === measurementParam);
       if (profile) {
+        const hasExistingDesignChoice =
+          Boolean(nextDraft.selectedCelmiraDesignId) ||
+          Boolean(nextDraft.selectedStudioDesignId) ||
+          nextDraft.attachments.length > 0;
+        const resolvedCategoryId =
+          (!hasExistingDesignChoice && profile.categoryHint) ||
+          nextDraft.categoryId ||
+          profile.categoryHint ||
+          "";
+
         nextDraft = {
           ...nextDraft,
+          categoryId: resolvedCategoryId,
           measurements: {
             ...nextDraft.measurements,
             mode: "profile",
             profileId: profile.id,
             profileName: profile.label,
+            templateId: profile.templateId,
             values: { ...profile.values },
+            extraValues: profile.extraValues ? { ...profile.extraValues } : undefined,
+            fitPreferenceNote:
+              nextDraft.measurements.fitPreferenceNote || profile.notes || "",
           },
         };
       }
@@ -411,17 +430,23 @@ export function CustomerBookingFlow() {
                     },
                   }))
                 }
-                onSelectProfile={(profile) =>
+                onSelectProfile={(profile) => {
+                  setErrors({});
                   setDraft((prev) => ({
                     ...prev,
                     measurements: {
                       ...prev.measurements,
+                      mode: "profile",
                       profileId: profile.id,
                       profileName: profile.label,
+                      templateId: profile.templateId,
                       values: { ...profile.values },
+                      extraValues: profile.extraValues ? { ...profile.extraValues } : undefined,
+                      fitPreferenceNote:
+                        prev.measurements.fitPreferenceNote || profile.notes || "",
                     },
-                  }))
-                }
+                  }));
+                }}
                 profiles={measurementProfiles}
               />
             ) : null}

@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { getRequiredMeasurementKeys } from "@/lib/booking-validation";
+import {
+  buildMeasurementStudioHref,
+  getMeasurementTemplateById,
+  summarizeMeasurementProfile,
+} from "@/lib/measurement-studio";
 import type {
   CustomerMeasurements,
   GarmentCategoryId,
@@ -169,33 +174,65 @@ export function StepMeasurements({
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cocoa">
-                Pilih Profil Ukuran
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cocoa">
+                  Pilih Profil Ukuran
+                </p>
+                <Link
+                  className="text-xs font-medium text-cocoa underline underline-offset-4 hover:text-espresso"
+                  href={buildMeasurementStudioHref({ categoryId })}
+                >
+                  Kelola / Buat di Measurement Studio
+                </Link>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {profiles.map((profile) => {
                   const selected = measurements.profileId === profile.id;
+                  const template = getMeasurementTemplateById(profile.templateId);
+                  const summary = summarizeMeasurementProfile(profile).slice(0, 3);
                   return (
-                    <button
-                      aria-pressed={selected}
-                      className={`cursor-pointer rounded-2xl border p-4 text-left transition-all ${
+                    <div
+                      className={`rounded-2xl border p-4 transition-all ${
                         selected
                           ? "border-espresso bg-ivory ring-1 ring-espresso"
                           : "border-cocoa/15 bg-ivory/75 hover:border-cocoa/45"
                       }`}
                       key={profile.id}
-                      onClick={() => onSelectProfile(profile)}
-                      type="button"
                     >
-                      <p className="font-[family-name:var(--font-display)] text-lg text-espresso">
-                        {profile.label}
-                      </p>
-                      <p className="mt-1 text-xs text-muted">
-                        Badan {profile.values.bust || "-"} cm · Pinggang{" "}
-                        {profile.values.waist || "-"} cm · Panjang{" "}
-                        {profile.values.garmentLength || "-"} cm
-                      </p>
-                    </button>
+                      <button
+                        aria-pressed={selected}
+                        className="w-full cursor-pointer text-left"
+                        onClick={() => onSelectProfile(profile)}
+                        type="button"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="rounded-full bg-cream px-2 py-0.5 text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-cocoa">
+                            {template.shortLabel}
+                          </span>
+                          {selected ? (
+                            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-espresso">
+                              Dipilih
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1.5 font-[family-name:var(--font-display)] text-lg text-espresso">
+                          {profile.label}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted">
+                          {summary.length > 0
+                            ? summary.map((item) => `${item.label} ${item.value}`).join(" · ")
+                            : "Belum ada angka ukuran"}
+                        </p>
+                      </button>
+                      <div className="mt-2.5 border-t border-cocoa/10 pt-2">
+                        <Link
+                          className="text-[0.6875rem] font-medium text-cocoa underline underline-offset-4 hover:text-espresso"
+                          href={buildMeasurementStudioHref({ profileId: profile.id })}
+                        >
+                          Ubah di Measurement Studio
+                        </Link>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -248,7 +285,7 @@ export function StepMeasurements({
             </p>
             <Link
               className="text-xs font-medium text-cocoa underline underline-offset-4 hover:text-espresso"
-              href="/measurement-studio"
+              href={buildMeasurementStudioHref({ categoryId })}
             >
               Butuh panduan visual? Buka Measurement Studio
             </Link>
@@ -297,6 +334,32 @@ export function StepMeasurements({
               );
             })}
           </div>
+          {measurements.templateId &&
+          measurements.extraValues &&
+          Object.keys(measurements.extraValues).length > 0 ? (
+            <div className="rounded-xl border border-cocoa/12 bg-ivory/85 p-4 text-xs">
+              <p className="font-semibold uppercase tracking-[0.14em] text-cocoa">
+                Ukuran Tambahan dari Template{" "}
+                {getMeasurementTemplateById(measurements.templateId).shortLabel}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {getMeasurementTemplateById(measurements.templateId)
+                  .fields.filter((field) => field.storageTarget === "extra")
+                  .map((field) => {
+                    const val = measurements.extraValues?.[field.key]?.trim();
+                    if (!val) return null;
+                    return (
+                      <span
+                        className="rounded-full bg-cream px-3 py-1 text-espresso"
+                        key={field.key}
+                      >
+                        {field.shortLabel}: <strong>{val} cm</strong>
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 

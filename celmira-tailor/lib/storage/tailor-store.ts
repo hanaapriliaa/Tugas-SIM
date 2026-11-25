@@ -8,9 +8,17 @@ import {
   removeSavedDesign,
   upsertSavedDesign,
 } from "@/lib/design-studio";
+import {
+  DEFAULT_MEASUREMENT_TEMPLATES,
+  MAX_SAVED_MEASUREMENT_PROFILES,
+  normalizeMeasurementTemplates,
+  removeMeasurementProfile,
+  upsertMeasurementProfile,
+} from "@/lib/measurement-studio";
 import type {
   DesignStudioSavedConfig,
   MeasurementProfile,
+  MeasurementTemplateConfig,
   OrderDraft,
   SubmittedOrder,
 } from "@/lib/types/tailor";
@@ -20,6 +28,7 @@ export const STORAGE_KEYS = {
   orders: "celmira_orders_v1",
   designs: "celmira_designs_v1",
   measurements: "celmira_measurements_v1",
+  measurementTemplates: "celmira_measurement_templates_v1",
 } as const;
 
 function isBrowser(): boolean {
@@ -85,6 +94,9 @@ export function loadBookingDraft(): OrderDraft {
         ...initial.measurements.values,
         ...(parsed.measurements?.values ?? {}),
       },
+      extraValues: parsed.measurements?.extraValues
+        ? { ...parsed.measurements.extraValues }
+        : undefined,
     },
     customer: {
       ...initial.customer,
@@ -131,10 +143,59 @@ export function loadSavedDesigns(): DesignStudioSavedConfig[] {
 
 export function loadMeasurementProfiles(): MeasurementProfile[] {
   if (!isBrowser()) return [];
-  return safeParseJson<MeasurementProfile[]>(
+  const parsed = safeParseJson<MeasurementProfile[]>(
     window.localStorage.getItem(STORAGE_KEYS.measurements),
     []
   );
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveMeasurementProfiles(profiles: MeasurementProfile[]): void {
+  if (!isBrowser()) return;
+  const limited = profiles.slice(0, MAX_SAVED_MEASUREMENT_PROFILES).map((profile) => ({
+    ...profile,
+    values: { ...profile.values },
+    extraValues: profile.extraValues ? { ...profile.extraValues } : undefined,
+  }));
+  safeSetItem(STORAGE_KEYS.measurements, limited);
+}
+
+export function saveMeasurementProfile(profile: MeasurementProfile): MeasurementProfile {
+  const existing = loadMeasurementProfiles();
+  saveMeasurementProfiles(upsertMeasurementProfile(existing, profile));
+  return profile;
+}
+
+export function deleteMeasurementProfile(id: string): void {
+  const existing = loadMeasurementProfiles();
+  saveMeasurementProfiles(removeMeasurementProfile(existing, id));
+}
+
+export function loadMeasurementTemplates(): MeasurementTemplateConfig[] {
+  if (!isBrowser()) {
+    return normalizeMeasurementTemplates(DEFAULT_MEASUREMENT_TEMPLATES);
+  }
+  const stored = safeParseJson<MeasurementTemplateConfig[] | null>(
+    window.localStorage.getItem(STORAGE_KEYS.measurementTemplates),
+    null
+  );
+  return normalizeMeasurementTemplates(stored);
+}
+
+export function saveMeasurementTemplates(templates: MeasurementTemplateConfig[]): void {
+  if (!isBrowser()) return;
+  safeSetItem(STORAGE_KEYS.measurementTemplates, normalizeMeasurementTemplates(templates));
+}
+
+export function resetMeasurementTemplates(): MeasurementTemplateConfig[] {
+  if (isBrowser()) {
+    try {
+      window.localStorage.removeItem(STORAGE_KEYS.measurementTemplates);
+    } catch {
+      // Abaikan jika akses storage dibatasi browser.
+    }
+  }
+  return normalizeMeasurementTemplates(DEFAULT_MEASUREMENT_TEMPLATES);
 }
 
 export function loadSubmittedOrders(): SubmittedOrder[] {
@@ -210,6 +271,9 @@ export function createSubmittedOrderFromDraft(
     measurements: {
       ...draft.measurements,
       values: { ...draft.measurements.values },
+      extraValues: draft.measurements.extraValues
+        ? { ...draft.measurements.extraValues }
+        : undefined,
     },
     customer: {
       fullName: draft.customer.fullName.trim(),
