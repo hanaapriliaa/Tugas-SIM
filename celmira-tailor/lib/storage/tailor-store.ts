@@ -3,6 +3,11 @@ import {
   createInitialOrderDraft,
   getCategoryById,
 } from "@/lib/booking-options";
+import {
+  MAX_SAVED_DESIGNS,
+  removeSavedDesign,
+  upsertSavedDesign,
+} from "@/lib/design-studio";
 import type {
   DesignStudioSavedConfig,
   MeasurementProfile,
@@ -243,4 +248,42 @@ export function saveSubmittedOrder(order: SubmittedOrder): SubmittedOrder {
     safeSetItem(STORAGE_KEYS.orders, [lightweightOrder, ...existing]);
   }
   return order;
+}
+
+export function saveSavedDesigns(designs: DesignStudioSavedConfig[]): void {
+  if (!isBrowser()) return;
+
+  const limited = designs.slice(0, MAX_SAVED_DESIGNS).map((design) => ({
+    ...design,
+    specifications: { ...design.specifications },
+    attachments: design.attachments.map((attachment) => ({
+      ...attachment,
+      previewDataUrl:
+        attachment.previewDataUrl && attachment.previewDataUrl.length <= 160_000
+          ? attachment.previewDataUrl
+          : undefined,
+    })),
+  }));
+
+  const ok = safeSetItem(STORAGE_KEYS.designs, limited);
+  if (!ok) {
+    safeSetItem(
+      STORAGE_KEYS.designs,
+      limited.map((design) => ({
+        ...design,
+        attachments: design.attachments.map(({ previewDataUrl: _ignored, ...rest }) => rest),
+      }))
+    );
+  }
+}
+
+export function saveDesignConfig(config: DesignStudioSavedConfig): DesignStudioSavedConfig {
+  const existing = loadSavedDesigns();
+  saveSavedDesigns(upsertSavedDesign(existing, config));
+  return config;
+}
+
+export function deleteDesignConfig(id: string): void {
+  const existing = loadSavedDesigns();
+  saveSavedDesigns(removeSavedDesign(existing, id));
 }

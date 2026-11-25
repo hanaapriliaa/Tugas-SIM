@@ -88,7 +88,7 @@ export function DesignStudioPreview() {
               <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
             </ButtonLink>
             <span className="text-[0.625rem] uppercase tracking-[0.2em] text-ivory/50">
-              Tahap pengembangan
+              Studio interaktif
             </span>
           </div>
         </div>
@@ -171,7 +171,8 @@ export function DesignStudioPreview() {
             </dl>
 
             <p className="mt-4 text-[0.625rem] leading-relaxed text-muted">
-              Pratinjau antarmuka. Pilihan di atas belum dapat disimpan pada tahap ini.
+              Pratinjau antarmuka. Buka Design Studio untuk menyimpan kombinasi dan mengajukannya
+              bersama pesanan.
             </p>
           </div>
         </div>

@@ -67,6 +67,7 @@ export function CustomerBookingFlow() {
     const profiles = loadMeasurementProfiles();
 
     const categoryParam = searchParams.get("category") as GarmentCategoryId | null;
+    const celmiraDesignParam = searchParams.get("celmiraDesignId");
     const designParam = searchParams.get("designId");
     const measurementParam = searchParams.get("measurementId");
 
@@ -77,6 +78,24 @@ export function CustomerBookingFlow() {
         ...nextDraft,
         categoryId: categoryParam,
       };
+    }
+
+    if (celmiraDesignParam) {
+      const celmiraDesign = celmiraDesignReferences.find(
+        (item) => item.id === celmiraDesignParam
+      );
+      if (celmiraDesign) {
+        nextDraft = {
+          ...nextDraft,
+          categoryId: celmiraDesign.categoryId,
+          designSource: "celmira",
+          selectedCelmiraDesignId: celmiraDesign.id,
+          specifications: {
+            ...nextDraft.specifications,
+            ...celmiraDesign.defaults,
+          },
+        };
+      }
     }
 
     if (designParam) {

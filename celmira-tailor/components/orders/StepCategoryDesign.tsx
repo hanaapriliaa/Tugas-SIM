@@ -7,10 +7,8 @@ import {
   celmiraDesignReferences,
   garmentCategories,
 } from "@/lib/booking-options";
-import {
-  MAX_ATTACHMENTS_COUNT,
-  validateAttachmentFile,
-} from "@/lib/booking-validation";
+import { MAX_ATTACHMENTS_COUNT } from "@/lib/booking-validation";
+import { formatFileSize, processAttachmentFiles } from "@/lib/attachments";
 import { CheckIcon, FileTextIcon, TrashIcon, UploadIcon } from "@/components/ui/icons";
 import type {
   CelmiraDesignReference,
@@ -34,44 +32,6 @@ type StepCategoryDesignProps = {
   onRemoveAttachment: (id: string) => void;
   onUpdateAttachmentNote: (id: string, note: string) => void;
 };
-
-async function createImageThumbnail(file: File): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onerror = () => resolve(undefined);
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : undefined;
-      if (!result) {
-        resolve(undefined);
-        return;
-      }
-      const img = new window.Image();
-      img.onerror = () => resolve(result);
-      img.onload = () => {
-        const maxSide = 480;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          resolve(result);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.78));
-      };
-      img.src = result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 export function StepCategoryDesign({
   draft,
@@ -99,36 +59,13 @@ export function StepCategoryDesign({
     if (!fileList || fileList.length === 0) return;
     setUploadError(null);
 
-    const remainingSlots = MAX_ATTACHMENTS_COUNT - draft.attachments.length;
-    if (remainingSlots <= 0) {
-      setUploadError(`Maksimal ${MAX_ATTACHMENTS_COUNT} file referensi per pesanan.`);
-      return;
-    }
-
-    const incoming = Array.from(fileList).slice(0, remainingSlots);
-    const created: ReferenceAttachment[] = [];
-
-    for (const file of incoming) {
-      const validationMsg = validateAttachmentFile(file);
-      if (validationMsg) {
-        setUploadError(validationMsg);
-        continue;
-      }
-      const isPdf = file.type.toLowerCase() === "application/pdf";
-      const previewDataUrl = isPdf ? undefined : await createImageThumbnail(file);
-      created.push({
-        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        name: file.name,
-        size: file.size,
-        mimeType: file.type,
-        kind: isPdf ? "pdf" : "image",
-        previewDataUrl,
-        note: "",
-      });
-    }
-
-    if (created.length > 0) {
-      onAddAttachments(created);
+    const { attachments, error } = await processAttachmentFiles(
+      fileList,
+      draft.attachments.length
+    );
+    if (error) setUploadError(error);
+    if (attachments.length > 0) {
+      onAddAttachments(attachments);
     }
   }
 
