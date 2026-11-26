@@ -354,3 +354,69 @@ export type SubmittedOrder = {
   cancelledAt?: string;
   history: OrderHistoryEvent[];
 };
+
+export type ChatThreadSource =
+  | "general"
+  | "design-studio"
+  | "measurement-studio"
+  | "orders"
+  | "track";
+
+export type ChatMessageSender = "customer" | "admin" | "system";
+
+export type ChatMessageStatus = "terkirim" | "dibaca";
+
+export type ChatMessageAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  previewDataUrl?: string;
+};
+
+export type ChatThreadContext = {
+  source: ChatThreadSource;
+  orderCode?: string;
+  categoryId?: GarmentCategoryId;
+  designId?: string;
+  designTitle?: string;
+  measurementProfileId?: string;
+  measurementLabel?: string;
+  templateId?: MeasurementTemplateId;
+};
+
+export type ChatMessage = {
+  id: string;
+  threadId: string;
+  sender: ChatMessageSender;
+  senderName: string;
+  body: string;
+  attachments: ChatMessageAttachment[];
+  createdAt: string;
+  status: ChatMessageStatus;
+  readAt?: string;
+};
+
+export type ChatThread = {
+  id: string;
+  title: string;
+  source: ChatThreadSource;
+  context: ChatThreadContext;
+  createdAt: string;
+  updatedAt: string;
+  unreadByCustomer: number;
+  unreadByAdmin: number;
+  messages: ChatMessage[];
+};
+
+/**
+ * Konfigurasi identitas & status admin chat.
+ * Nomor WhatsApp resmi dibiarkan kosong sampai nomor terverifikasi tersedia.
+ */
+export type AdminChatConfig = {
+  adminDisplayName: string;
+  statusLabel: string;
+  availabilityNote: string;
+  officialWhatsappNumber?: string;
+  updatedAt: string;
+};

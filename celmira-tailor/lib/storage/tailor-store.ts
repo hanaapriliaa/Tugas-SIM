@@ -16,13 +16,22 @@ import {
   upsertMeasurementProfile,
 } from "@/lib/measurement-studio";
 import {
+  MAX_CHAT_THREADS,
+  createDefaultAdminChatConfig,
+  prepareChatThreadsForStorage,
+  sanitizeOrderCodeParam,
+  upsertChatThreadInList,
+} from "@/lib/chat";
+import {
   createDefaultAdminPaymentConfig,
   createHistoryEvent,
   generateTrackingAccessCode,
   normalizeSubmittedOrder,
 } from "@/lib/order-tracking";
 import type {
+  AdminChatConfig,
   AdminPaymentConfig,
+  ChatThread,
   DesignStudioSavedConfig,
   MeasurementProfile,
   MeasurementTemplateConfig,
@@ -37,7 +46,15 @@ export const STORAGE_KEYS = {
   measurements: "celmira_measurements_v1",
   measurementTemplates: "celmira_measurement_templates_v1",
   paymentConfig: "celmira_payment_config_v1",
+  chatThreads: "celmira_chat_threads_v1",
+  chatConfig: "celmira_chat_config_v1",
 } as const;
+
+export const SESSION_KEYS = {
+  verifiedOrders: "celmira_verified_orders_session_v1",
+} as const;
+
+export const CHAT_UPDATED_EVENT = "celmira-chat-updated";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -449,4 +466,123 @@ export function saveDesignConfig(config: DesignStudioSavedConfig): DesignStudioS
 export function deleteDesignConfig(id: string): void {
   const existing = loadSavedDesigns();
   saveSavedDesigns(removeSavedDesign(existing, id));
+}
+
+function notifyChatUpdated(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_UPDATED_EVENT));
+}
+
+export function loadChatThreads(): ChatThread[] {
+  if (!isBrowser()) return [];
+  const parsed = safeParseJson<ChatThread[]>(
+    window.localStorage.getItem(STORAGE_KEYS.chatThreads),
+    []
+  );
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((item) => item && typeof item.id === "string" && Array.isArray(item.messages))
+    .slice(0, MAX_CHAT_THREADS);
+}
+
+export function saveChatThreads(threads: ChatThread[]): void {
+  if (!isBrowser()) return;
+  const limited = prepareChatThreadsForStorage(threads);
+
+  const ok = safeSetItem(STORAGE_KEYS.chatThreads, limited);
+  if (!ok) {
+    // Jika kuota browser penuh, pertahankan teks & metadata sambil melepas thumbnail lama terlebih dulu.
+    const reduced = prepareChatThreadsForStorage(limited, { keepImagesOnlyForTopCount: 2 });
+    const reducedOk = safeSetItem(STORAGE_KEYS.chatThreads, reduced);
+    if (!reducedOk) {
+      safeSetItem(
+        STORAGE_KEYS.chatThreads,
+        prepareChatThreadsForStorage(limited, { stripAllImages: true })
+      );
+    }
+  }
+  notifyChatUpdated();
+}
+
+export function upsertChatThread(thread: ChatThread): ChatThread[] {
+  const next = upsertChatThreadInList(loadChatThreads(), thread);
+  saveChatThreads(next);
+  return next;
+}
+
+export function deleteChatThread(id: string): ChatThread[] {
+  const next = loadChatThreads().filter((item) => item.id !== id);
+  saveChatThreads(next);
+  return next;
+}
+
+export function loadAdminChatConfig(): AdminChatConfig {
+  if (!isBrowser()) return createDefaultAdminChatConfig();
+  const stored = safeParseJson<Partial<AdminChatConfig> | null>(
+    window.localStorage.getItem(STORAGE_KEYS.chatConfig),
+    null
+  );
+  const defaults = createDefaultAdminChatConfig();
+  if (!stored) return defaults;
+  return {
+    ...defaults,
+    ...stored,
+  };
+}
+
+export function saveAdminChatConfig(config: AdminChatConfig): AdminChatConfig {
+  const payload: AdminChatConfig = {
+    ...config,
+    updatedAt: new Date().toISOString(),
+  };
+  safeSetItem(STORAGE_KEYS.chatConfig, payload);
+  notifyChatUpdated();
+  return payload;
+}
+
+function isSessionStorageAvailable(): boolean {
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
+function loadVerifiedOrderCodesFromSession(): string[] {
+  if (!isSessionStorageAvailable()) return [];
+  const parsed = safeParseJson<string[]>(
+    window.sessionStorage.getItem(SESSION_KEYS.verifiedOrders),
+    []
+  );
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function markOrderVerifiedInSession(orderCode: string): void {
+  if (!isSessionStorageAvailable()) return;
+  const safeCode = sanitizeOrderCodeParam(orderCode);
+  if (!safeCode) return;
+  const existing = loadVerifiedOrderCodesFromSession();
+  if (existing.includes(safeCode)) return;
+  try {
+    window.sessionStorage.setItem(
+      SESSION_KEYS.verifiedOrders,
+      JSON.stringify([safeCode, ...existing].slice(0, 20))
+    );
+  } catch {
+    // Abaikan jika sessionStorage dibatasi browser.
+  }
+}
+
+export function isOrderVerifiedInSession(orderCode?: string | null): boolean {
+  const safeCode = sanitizeOrderCodeParam(orderCode);
+  if (!safeCode) return false;
+  return loadVerifiedOrderCodesFromSession().includes(safeCode);
+}
+
+export function clearOrderVerifiedInSession(orderCode?: string | null): void {
+  if (!isSessionStorageAvailable()) return;
+  const safeCode = sanitizeOrderCodeParam(orderCode);
+  if (!safeCode) return;
+  const next = loadVerifiedOrderCodesFromSession().filter((code) => code !== safeCode);
+  try {
+    window.sessionStorage.setItem(SESSION_KEYS.verifiedOrders, JSON.stringify(next));
+  } catch {
+    // Abaikan jika sessionStorage dibatasi browser.
+  }
 }

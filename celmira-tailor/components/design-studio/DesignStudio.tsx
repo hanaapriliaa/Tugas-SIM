@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
-import { ArrowRight, CheckIcon, TrashIcon } from "@/components/ui/icons";
+import { ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { DesignStudioForm } from "@/components/design-studio/DesignStudioForm";
 import { SilhouettePreview } from "@/components/design-studio/SilhouettePreview";
 import { garmentCategories } from "@/lib/booking-options";
+import { buildChatHref } from "@/lib/chat";
 import {
   MAX_SAVED_DESIGNS,
   buildDesignOrderHref,
@@ -322,7 +323,7 @@ export function DesignStudio() {
                 ))}
               </dl>
 
-              <div className="mt-5">
+              <div className="mt-5 flex flex-col gap-2.5">
                 {draft.id ? (
                   <ButtonLink className="w-full" href={buildDesignOrderHref(draft.id)}>
                     Gunakan di Pesanan
@@ -333,6 +334,19 @@ export function DesignStudio() {
                     Simpan desain terlebih dahulu untuk dapat mengajukannya bersama pesanan custom.
                   </p>
                 )}
+
+                <ButtonLink
+                  className="w-full"
+                  href={buildChatHref({
+                    source: "design-studio",
+                    category: draft.categoryId,
+                    designId: draft.id || undefined,
+                  })}
+                  variant="outline"
+                >
+                  <ChatIcon className="h-4 w-4" />
+                  Konsultasi Desain di Chat
+                </ButtonLink>
               </div>
             </div>
 

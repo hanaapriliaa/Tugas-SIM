@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { ChatIcon } from "@/components/ui/icons";
 import { celmiraDesignReferences, getCategoryById } from "@/lib/booking-options";
+import { buildChatHref } from "@/lib/chat";
 import type { DesignStudioSavedConfig, OrderDraft } from "@/lib/types/tailor";
 
 type BookingSummarySidebarProps = {
@@ -93,6 +96,16 @@ export function BookingSummarySidebar({ draft, savedDesigns }: BookingSummarySid
             disetujui, DP 50% biaya jahit dibayarkan dalam 24 jam (verifikasi manual), lalu
             pelunasan 50% + ongkos kirim terpisah setelah busana selesai.
           </p>
+          <Link
+            className="mt-3 inline-flex items-center gap-1.5 font-medium text-espresso underline underline-offset-4 transition-colors hover:text-cocoa"
+            href={buildChatHref({
+              source: "orders",
+              category: draft.categoryId || undefined,
+            })}
+          >
+            <ChatIcon className="h-3.5 w-3.5" />
+            Butuh konsultasi? Buka Chat
+          </Link>
         </div>
       </div>
     </aside>

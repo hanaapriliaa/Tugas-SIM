@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { buttonClass } from "@/components/ui/ButtonLink";
-import { ArrowRight, CheckIcon } from "@/components/ui/icons";
+import { ArrowRight, ChatIcon, CheckIcon } from "@/components/ui/icons";
+import { buildChatHref } from "@/lib/chat";
+import { markOrderVerifiedInSession } from "@/lib/storage/tailor-store";
 import type { SubmittedOrder } from "@/lib/types/tailor";
 
 type OrderConfirmationViewProps = {
@@ -14,6 +17,9 @@ export function OrderConfirmationView({
   order,
   onCreateAnother,
 }: OrderConfirmationViewProps) {
+  useEffect(() => {
+    markOrderVerifiedInSession(order.orderCode);
+  }, [order.orderCode]);
   return (
     <div className="mx-auto max-w-3xl rounded-[2rem] border border-cocoa/15 bg-cream/55 p-7 sm:p-10">
       <div className="flex items-center gap-3">
@@ -93,13 +99,24 @@ export function OrderConfirmationView({
         pada tahap backend.
       </div>
 
-      <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Link
           className={buttonClass("solid")}
           href={`/track?code=${encodeURIComponent(order.orderCode)}`}
         >
           Lihat di Lacak Pesanan
           <ArrowRight className="h-4 w-4" />
+        </Link>
+        <Link
+          className={buttonClass("outline")}
+          href={buildChatHref({
+            source: "orders",
+            orderCode: order.orderCode,
+            category: order.categoryId,
+          })}
+        >
+          <ChatIcon className="h-4 w-4" />
+          Tanya Pesanan di Chat
         </Link>
         <button className={buttonClass("outline")} onClick={onCreateAnother} type="button">
           Buat Pesanan Baru

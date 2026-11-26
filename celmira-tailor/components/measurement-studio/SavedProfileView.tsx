@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { MannequinPreview } from "@/components/measurement-studio/MannequinPreview";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
-import { ArrowLeft, ArrowRight, CheckIcon, TrashIcon } from "@/components/ui/icons";
+import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
+import { buildChatHref } from "@/lib/chat";
 import { formatSavedDate } from "@/lib/design-studio";
 import {
   buildMeasurementOrderHref,
@@ -168,11 +170,25 @@ export function SavedProfileView({
             </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-cocoa/12 bg-ivory/80 p-4 text-xs leading-relaxed text-muted">
-            <strong className="font-semibold text-espresso">Catatan atelier:</strong> Saat Anda
-            menekan <em>“Gunakan untuk Pesanan”</em>, kategori pakaian, seluruh ukuran (cm), dan
-            catatan profil akan langsung terpasang di formulir pemesanan. Tim produksi Celmira tetap
-            meninjau kesesuaian ukuran sebelum pemotongan bahan.
+          <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-cocoa/12 bg-ivory/80 p-4 text-xs leading-relaxed text-muted sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-2xl">
+              <strong className="font-semibold text-espresso">Catatan atelier:</strong> Saat Anda
+              menekan <em>“Gunakan untuk Pesanan”</em>, kategori pakaian, seluruh ukuran (cm), dan
+              catatan profil akan langsung terpasang di formulir pemesanan. Tim produksi Celmira tetap
+              meninjau kesesuaian ukuran sebelum pemotongan bahan.
+            </p>
+            <Link
+              className="inline-flex shrink-0 items-center gap-1.5 font-medium text-cocoa underline underline-offset-4 transition-colors hover:text-espresso"
+              href={buildChatHref({
+                source: "measurement-studio",
+                category: profile.categoryHint,
+                measurementId: profile.id,
+                template: profile.templateId,
+              })}
+            >
+              <ChatIcon className="h-3.5 w-3.5" />
+              Tanya Soal Ukuran
+            </Link>
           </div>
         </section>
       </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { MannequinPreview } from "@/components/measurement-studio/MannequinPreview";
@@ -9,8 +10,9 @@ import {
 } from "@/components/measurement-studio/MeasurementStudioForm";
 import { SavedProfileView } from "@/components/measurement-studio/SavedProfileView";
 import { buttonClass } from "@/components/ui/ButtonLink";
-import { ArrowLeft, ArrowRight, CheckIcon } from "@/components/ui/icons";
+import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
+import { buildChatHref } from "@/lib/chat";
 import {
   DEFAULT_MEASUREMENT_TEMPLATES,
   applySizePresetToDraft,
@@ -631,6 +633,20 @@ export function MeasurementStudio() {
                     </div>
                   </div>
                 ) : null}
+
+                <div className="mt-4 border-t border-cocoa/10 pt-3.5 text-center">
+                  <Link
+                    className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-cocoa underline underline-offset-4 transition-colors hover:text-espresso"
+                    href={buildChatHref({
+                      source: "measurement-studio",
+                      category: draft.categoryHint,
+                      template: draft.templateId,
+                    })}
+                  >
+                    <ChatIcon className="h-3.5 w-3.5" />
+                    Tanya Soal Ukuran di Chat
+                  </Link>
+                </div>
               </div>
             </aside>
           </div>

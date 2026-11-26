@@ -1,19 +1,19 @@
 # Progress Log — Celmira Tailor
 
 - **Branch aktif:** `feat/project-foundation`
-- **Checkpoint terakhir di GitHub:** `cb0bdbf` (`feat: implement Celmira Tailor Measurement Studio`)
+- **Checkpoint terakhir di GitHub:** `59fa7df` (`feat: implement Celmira Tailor Order Tracking and Invoice Payment System`)
 
 ## Status Modul
 | Modul | Route | Status | Catatan |
 | --- | --- | --- | --- |
 | Fondasi Visual & Homepage | `/` | Selesai | 9 section, header, footer, mobile nav, floating chat |
-| Customer Booking Flow | `/orders` | Selesai (lokal) | Multi-step booking, validasi, multi-upload referensi, integrasi desain & profil ukuran lokal, kode akses tracking |
+| Customer Booking Flow | `/orders` | Selesai (lokal) | Multi-step booking, validasi, multi-upload referensi, integrasi desain, ukuran & tautan chat |
 | Katalog Jahit | `/catalog` | Selesai (lokal) | Filter 8 kategori & koneksi langsung ke `/design-studio` dan `/orders` |
-| Design Studio | `/design-studio` | Selesai (lokal) | Pratinjau siluet interaktif, konfigurasi bahan/warna/detail, simpan & muat lokal |
-| Measurement Studio | `/measurement-studio` | Selesai (lokal) | Mannequin SVG 2D adaptif 5 template, slider/angka/+/-, validasi cm, panduan mengukur, profil tersimpan & struktur template siap admin |
-| Lacak & Daftar Pesanan | `/track` | Selesai (lokal) | Verifikasi akses 2 faktor, timeline 10 tahap produksi, persetujuan penawaran, Invoice DP 50% (batas 24 jam + proteksi unggah bukti), Invoice Pelunasan (ongkir terpisah), unggah bukti & riwayat status |
-| Chat Pelanggan | `/chat` | Placeholder | Floating panel aktif; ruang chat penuh + balasan admin menyusul |
-| Admin Dashboard | `/admin` | Tahap 4 (lokal) | Pengelolaan pesanan masuk, penawaran harga akhir, konfigurasi QRIS resmi, verifikasi manual DP/pelunasan, kontrol 10 tahap produksi, invoice pelunasan, pengiriman/pengambilan & riwayat transaksi; autentikasi & manajemen template/chat menyusul |
+| Design Studio | `/design-studio` | Selesai (lokal) | Pratinjau siluet interaktif, konfigurasi bahan/warna/detail, simpan lokal & konsultasi chat |
+| Measurement Studio | `/measurement-studio` | Selesai (lokal) | Mannequin SVG 2D adaptif 5 template, slider/angka/+/-, validasi cm, profil tersimpan & konsultasi chat |
+| Lacak & Daftar Pesanan | `/track` | Selesai (lokal) | Verifikasi akses 2 faktor, timeline 10 tahap produksi, persetujuan penawaran, Invoice DP 50% (batas 24 jam + proteksi unggah bukti), Invoice Pelunasan (ongkir terpisah) & tautan chat pesanan |
+| Chat Pelanggan | `/chat` | Selesai (Tahap 5A, lokal) | Floating chat terhubung store (sembunyi di `/chat`), daftar percakapan, ruang chat + status admin, waktu & indikator terkirim/terbaca, upload gambar terkompresi, konteks lintas halaman & proteksi privasi pesanan |
+| Admin Dashboard | `/admin` | Tahap 4 (lokal) | Pengelolaan pesanan masuk, penawaran harga akhir, konfigurasi QRIS resmi, verifikasi manual DP/pelunasan, kontrol 10 tahap produksi, invoice pelunasan, pengiriman/pengambilan & riwayat transaksi; balasan chat admin (Tahap 5B), autentikasi & manajemen template menyusul |
 | Backend & PostgreSQL | `/api/*` | Belum terintegrasi | Masih menggunakan penyimpanan browser lokal sementara |
 
 ## Riwayat Checkpoint
@@ -21,4 +21,5 @@
 - `06f3093` — Implementasi Customer Booking Flow multi-step (`/orders`).
 - `a420b17` — Implementasi Design Studio (`/design-studio`) & Katalog Jahit (`/catalog`).
 - `cb0bdbf` — Implementasi Measurement Studio (`/measurement-studio`) dengan mannequin SVG 2D, 5 template kategori, validasi cm, dan integrasi booking flow.
-- *(Belum di-commit)* — Implementasi Tahap 4: Order Tracking (`/track`), sistem Invoice DP 50% & Pelunasan (ongkir terpisah), aturan verifikasi manual & proteksi tenggat 24 jam, serta panel pengelolaan pesanan Admin (`/admin`).
+- `59fa7df` — Implementasi Order Tracking (`/track`), sistem Invoice DP 50% & Pelunasan (ongkir terpisah), aturan verifikasi manual & proteksi tenggat 24 jam, serta panel pengelolaan pesanan Admin (`/admin`).
+- *(Lokal, belum di-commit)* — Implementasi Tahap 5A: Customer Chat (`/chat`), Floating Chat interaktif, upload gambar referensi, konteks lintas halaman & proteksi privasi order context.

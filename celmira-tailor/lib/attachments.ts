@@ -2,7 +2,12 @@ import {
   MAX_ATTACHMENTS_COUNT,
   validateAttachmentFile,
 } from "@/lib/booking-validation";
-import type { ReferenceAttachment } from "@/lib/types/tailor";
+import {
+  MAX_CHAT_IMAGE_DATA_URL_LENGTH,
+  MAX_CHAT_IMAGES_PER_MESSAGE,
+  validateChatImageFile,
+} from "@/lib/chat";
+import type { ChatMessageAttachment, ReferenceAttachment } from "@/lib/types/tailor";
 
 /**
  * Membuat thumbnail JPEG yang ringkas dari file gambar.
@@ -97,6 +102,58 @@ export async function processAttachmentFiles(
       kind: isPdf ? "pdf" : "image",
       previewDataUrl,
       note: "",
+    });
+  }
+
+  return { attachments, error };
+}
+
+export type ProcessedChatImages = {
+  attachments: ChatMessageAttachment[];
+  error: string | null;
+};
+
+/**
+ * Memvalidasi gambar referensi chat (JPG/PNG/WEBP, maks 5 MB) dan mengecilkan
+ * thumbnail agar aman disimpan di localStorage tanpa melebihi kapasitas.
+ */
+export async function processChatImageFiles(
+  fileList: FileList | null,
+  existingCount: number
+): Promise<ProcessedChatImages> {
+  if (!fileList || fileList.length === 0) {
+    return { attachments: [], error: null };
+  }
+
+  const remainingSlots = MAX_CHAT_IMAGES_PER_MESSAGE - existingCount;
+  if (remainingSlots <= 0) {
+    return {
+      attachments: [],
+      error: `Maksimal ${MAX_CHAT_IMAGES_PER_MESSAGE} gambar referensi dalam satu pesan.`,
+    };
+  }
+
+  const incoming = Array.from(fileList).slice(0, remainingSlots);
+  const attachments: ChatMessageAttachment[] = [];
+  let error: string | null = null;
+
+  for (const file of incoming) {
+    const validationMessage = validateChatImageFile(file);
+    if (validationMessage) {
+      error = error ?? validationMessage;
+      continue;
+    }
+
+    const thumbnail = await createImageThumbnail(file);
+    const safePreview =
+      thumbnail && thumbnail.length <= MAX_CHAT_IMAGE_DATA_URL_LENGTH ? thumbnail : undefined;
+
+    attachments.push({
+      id: `cimg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: file.name,
+      size: file.size,
+      mimeType: file.type,
+      previewDataUrl: safePreview,
     });
   }
 

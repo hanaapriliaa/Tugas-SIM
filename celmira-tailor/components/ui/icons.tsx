@@ -144,6 +144,61 @@ export function ArrowLeft({ className = "h-4 w-4" }: IconProps) {
   );
 }
 
+export function SendIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </svg>
+  );
+}
+
+export function ImageIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <rect height="18" rx="3" width="18" x="3" y="3" />
+      <circle cx="9" cy="9" r="1.5" />
+      <path d="m21 15-4.5-4.5L7 20" />
+    </svg>
+  );
+}
+
+export function CheckDoubleIcon({ className = "h-3.5 w-3.5" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="m2 12.5 4.2 4.2L14 9" />
+      <path d="m9.5 16.7 2.2 2.2L21.5 9" />
+    </svg>
+  );
+}
+
 export function UploadIcon({ className = "h-5 w-5" }: IconProps) {
   return (
     <svg

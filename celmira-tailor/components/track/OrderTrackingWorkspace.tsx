@@ -10,10 +10,12 @@ import { StatusBadge } from "@/components/track/StatusBadge";
 import { buttonClass } from "@/components/ui/ButtonLink";
 import {
   ArrowRight,
+  ChatIcon,
   LockIcon,
   SearchIcon,
   ShieldIcon,
 } from "@/components/ui/icons";
+import { buildChatHref } from "@/lib/chat";
 import {
   ORDER_STATUS_META,
   createDefaultAdminPaymentConfig,
@@ -27,8 +29,10 @@ import {
   verifyOrderTrackingAccess,
 } from "@/lib/order-tracking";
 import {
+  clearOrderVerifiedInSession,
   loadAdminPaymentConfig,
   loadSubmittedOrders,
+  markOrderVerifiedInSession,
   updateSubmittedOrder,
 } from "@/lib/storage/tailor-store";
 import type {
@@ -100,6 +104,7 @@ export function OrderTrackingWorkspace() {
     }
 
     setVerifiedOrderId(result.order.id);
+    markOrderVerifiedInSession(result.order.orderCode);
   };
 
   const handleRespondQuote = (decision: "approve" | "reject", rejectionReason?: string) => {
@@ -157,6 +162,7 @@ export function OrderTrackingWorkspace() {
   };
 
   const handleLockOrder = () => {
+    clearOrderVerifiedInSession(activeOrder?.orderCode);
     setVerifiedOrderId(null);
     setVerifierInput("");
     setActionFeedback(null);
@@ -360,13 +366,26 @@ export function OrderTrackingWorkspace() {
                 </p>
               </div>
 
-              <button
-                className="rounded-full border border-cocoa/25 bg-ivory px-4 py-2 text-xs font-medium text-espresso transition-colors hover:border-espresso"
-                onClick={handleLockOrder}
-                type="button"
-              >
-                Tutup / Ganti Pesanan
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Link
+                  className="inline-flex items-center gap-1.5 rounded-full bg-espresso px-4 py-2 text-xs font-medium text-ivory transition-colors hover:bg-cocoa"
+                  href={buildChatHref({
+                    source: "track",
+                    orderCode: activeOrder.orderCode,
+                    category: activeOrder.categoryId,
+                  })}
+                >
+                  <ChatIcon className="h-3.5 w-3.5" />
+                  Tanya Admin di Chat
+                </Link>
+                <button
+                  className="rounded-full border border-cocoa/25 bg-ivory px-4 py-2 text-xs font-medium text-espresso transition-colors hover:border-espresso"
+                  onClick={handleLockOrder}
+                  type="button"
+                >
+                  Tutup / Ganti Pesanan
+                </button>
+              </div>
             </div>
 
             <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
