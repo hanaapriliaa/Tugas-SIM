@@ -5,23 +5,29 @@ import {
   MAX_CHAT_IMAGES_PER_MESSAGE,
   MAX_CHAT_THREADS,
   MAX_MESSAGES_PER_THREAD,
+  appendAdminMessage,
   appendCustomerMessage,
   buildChatHref,
   buildOfficialWhatsappHref,
   createChatThread,
   createDefaultAdminChatConfig,
+  filterAdminChatThreads,
   filterChatThreads,
   findMatchingContextThread,
+  getTotalUnreadForAdmin,
   getTotalUnreadForCustomer,
   markCustomerMessagesReadByAdmin,
   markThreadReadByCustomer,
   parseChatQueryParams,
   prepareChatThreadsForStorage,
+  resolveThreadCustomerDisplay,
   sanitizeOrderCodeParam,
   upsertChatThreadInList,
   validateChatImageFile,
   validateChatMessageInput,
 } from "../lib/chat.ts";
+import { createInitialOrderDraft } from "../lib/booking-options.ts";
+import type { SubmittedOrder } from "../lib/types/tailor.ts";
 
 test("konfigurasi chat bawaan tidak berisi nomor WhatsApp palsu", () => {
   const config = createDefaultAdminChatConfig();
@@ -245,4 +251,169 @@ test("prepareChatThreadsForStorage membatasi jumlah thread, pesan, dan ukuran pr
   if (oversizedRes.ok) {
     assert.equal(oversizedRes.message.attachments[0].previewDataUrl, undefined);
   }
+});
+
+function createSampleOrderForChat(orderCode: string, fullName: string): SubmittedOrder {
+  const draft = createInitialOrderDraft();
+  return {
+    id: `ord-${orderCode}`,
+    orderCode,
+    trackingAccessCode: "ABC123",
+    createdAt: "2026-11-26T08:00:00.000Z",
+    updatedAt: "2026-11-26T08:00:00.000Z",
+    persistenceMode: "local-browser",
+    status: "menunggu_penawaran",
+    productionStage: "menunggu_produksi",
+    categoryId: "kebaya",
+    categoryName: "Kebaya",
+    designSource: "celmira",
+    designTitle: "Kebaya Brokat Panjang",
+    attachments: [],
+    specifications: draft.specifications,
+    measurements: draft.measurements,
+    customer: {
+      fullName,
+      whatsapp: "081234567890",
+      email: "",
+    },
+    delivery: draft.delivery,
+    targetDate: "2026-12-15",
+    invoice: {
+      quoteStatus: "belum_dikirim",
+      tailoringFee: null,
+      shippingFee: 0,
+      dpAmount: null,
+      dpDueAt: null,
+      settlementTailoringAmount: null,
+      settlementTotalAmount: null,
+    },
+    payments: [],
+    history: [],
+  };
+}
+
+test("appendAdminMessage memvalidasi balasan kosong, menandai pesan customer dibaca, dan mengirim balasan berstatus terkirim", () => {
+  const t1 = new Date("2026-11-26T10:00:00.000Z");
+  const t2 = new Date("2026-11-26T10:10:00.000Z");
+  const t3 = new Date("2026-11-26T10:15:00.000Z");
+
+  const thread = createChatThread(
+    { context: { source: "track", orderCode: "CT-20261126-ADM1" } },
+    t1
+  );
+  const custRes = appendCustomerMessage(
+    thread,
+    { body: "Halo admin, apakah brokat maroon ready?" },
+    t1
+  );
+  assert.equal(custRes.ok, true);
+  if (!custRes.ok) return;
+
+  // Balasan kosong harus ditolak
+  const emptyReply = appendAdminMessage(custRes.thread, { body: "   " }, t2);
+  assert.equal(emptyReply.ok, false);
+
+  // Balasan valid harus menandai pesan customer dibaca & menambah unreadByCustomer
+  const replyRes = appendAdminMessage(
+    custRes.thread,
+    {
+      body: "Ready kak, kami cek detail ukurannya dulu ya.",
+      senderName: "Tim Atelier Celmira",
+      attachments: [
+        {
+          id: "adm-img-1",
+          name: "swatch-maroon.jpg",
+          size: 2048,
+          mimeType: "image/jpeg",
+          previewDataUrl: "data:image/jpeg;base64,SWATCH",
+        },
+      ],
+    },
+    t2
+  );
+  assert.equal(replyRes.ok, true);
+  if (!replyRes.ok) return;
+
+  assert.equal(replyRes.thread.unreadByAdmin, 0);
+  assert.equal(replyRes.thread.unreadByCustomer, 1);
+  assert.equal(replyRes.thread.messages[0].status, "dibaca");
+  assert.equal(replyRes.thread.messages[0].readAt, t2.toISOString());
+  assert.equal(replyRes.message.sender, "admin");
+  assert.equal(replyRes.message.status, "terkirim");
+  assert.equal(replyRes.message.attachments.length, 1);
+
+  // Saat customer membaca di /chat, status balasan admin berubah menjadi dibaca
+  const afterCustomerRead = markThreadReadByCustomer(replyRes.thread, t3);
+  assert.equal(afterCustomerRead.unreadByCustomer, 0);
+  assert.equal(afterCustomerRead.messages[1].status, "dibaca");
+  assert.equal(afterCustomerRead.messages[1].readAt, t3.toISOString());
+});
+
+test("filterAdminChatThreads, getTotalUnreadForAdmin, dan resolveThreadCustomerDisplay bekerja akurat", () => {
+  const sampleOrder = createSampleOrderForChat("CT-20261126-SARI", "Sari Dewi");
+
+  const tEmpty = createChatThread(
+    { title: "Thread Kosong", context: { source: "general" } },
+    new Date("2026-11-26T07:00:00.000Z")
+  );
+
+  const tOrderRaw = createChatThread(
+    { context: { source: "track", orderCode: "CT-20261126-SARI" } },
+    new Date("2026-11-26T08:00:00.000Z")
+  );
+  const tOrderSent = appendCustomerMessage(
+    tOrderRaw,
+    { body: "Kapan penawaran dikirim?" },
+    new Date("2026-11-26T08:05:00.000Z")
+  );
+  assert.equal(tOrderSent.ok, true);
+  if (!tOrderSent.ok) return;
+
+  const tReadRaw = createChatThread(
+    { title: "Konsultasi Gamis", customerName: "Nadia", context: { source: "design-studio" } },
+    new Date("2026-11-26T09:00:00.000Z")
+  );
+  const tReadSent = appendCustomerMessage(
+    tReadRaw,
+    { body: "Minta saran kain adem" },
+    new Date("2026-11-26T09:05:00.000Z")
+  );
+  assert.equal(tReadSent.ok, true);
+  if (!tReadSent.ok) return;
+  const tReadMarked = markCustomerMessagesReadByAdmin(
+    tReadSent.thread,
+    new Date("2026-11-26T09:10:00.000Z")
+  );
+
+  const allThreads = [tEmpty, tOrderSent.thread, tReadMarked];
+  assert.equal(getTotalUnreadForAdmin(allThreads), 1);
+
+  const resolvedOrderCustomer = resolveThreadCustomerDisplay(tOrderSent.thread, [sampleOrder]);
+  assert.equal(resolvedOrderCustomer.customerName, "Sari Dewi");
+  assert.equal(resolvedOrderCustomer.order?.orderCode, "CT-20261126-SARI");
+
+  const resolvedNamedCustomer = resolveThreadCustomerDisplay(tReadMarked, [sampleOrder]);
+  assert.equal(resolvedNamedCustomer.customerName, "Nadia");
+  assert.equal(resolvedNamedCustomer.order, null);
+
+  assert.equal(
+    filterAdminChatThreads(allThreads, { filter: "all", orders: [sampleOrder] }).length,
+    3
+  );
+  assert.equal(
+    filterAdminChatThreads(allThreads, { filter: "unread", orders: [sampleOrder] }).length,
+    1
+  );
+  assert.equal(
+    filterAdminChatThreads(allThreads, { filter: "active", orders: [sampleOrder] }).length,
+    2
+  );
+  assert.equal(
+    filterAdminChatThreads(allThreads, { query: "sari dewi", orders: [sampleOrder] }).length,
+    1
+  );
+  assert.equal(
+    filterAdminChatThreads(allThreads, { query: "kain adem", orders: [sampleOrder] }).length,
+    1
+  );
 });

@@ -400,6 +400,7 @@ export type ChatMessage = {
 export type ChatThread = {
   id: string;
   title: string;
+  customerName?: string;
   source: ChatThreadSource;
   context: ChatThreadContext;
   createdAt: string;

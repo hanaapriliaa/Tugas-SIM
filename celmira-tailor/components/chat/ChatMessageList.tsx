@@ -14,9 +14,14 @@ import type { ChatMessage, ChatMessageAttachment } from "@/lib/types/tailor";
 type ChatMessageListProps = {
   messages: ChatMessage[];
   emptyHint?: string;
+  viewerRole?: "customer" | "admin";
 };
 
-export function ChatMessageList({ messages, emptyHint }: ChatMessageListProps) {
+export function ChatMessageList({
+  messages,
+  emptyHint,
+  viewerRole = "customer",
+}: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [lightboxImage, setLightboxImage] = useState<ChatMessageAttachment | null>(null);
 
@@ -75,6 +80,9 @@ export function ChatMessageList({ messages, emptyHint }: ChatMessageListProps) {
           }
 
           const isCustomer = message.sender === "customer";
+          const isRightAligned = viewerRole === "admin" ? !isCustomer : isCustomer;
+          const showReadStatus =
+            viewerRole === "admin" ? !isCustomer || message.status === "dibaca" : isCustomer;
 
           return (
             <div className="space-y-3" key={message.id}>
@@ -86,14 +94,14 @@ export function ChatMessageList({ messages, emptyHint }: ChatMessageListProps) {
                 </div>
               ) : null}
 
-              <div className={`flex flex-col ${isCustomer ? "items-end" : "items-start"}`}>
+              <div className={`flex flex-col ${isRightAligned ? "items-end" : "items-start"}`}>
                 <span className="mb-1 px-1 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-muted">
                   {message.senderName}
                 </span>
 
                 <div
                   className={`max-w-[88%] rounded-[1.35rem] px-4 py-3 text-sm leading-relaxed sm:max-w-[76%] ${
-                    isCustomer
+                    isRightAligned
                       ? "rounded-br-sm bg-espresso text-ivory"
                       : "rounded-bl-sm border border-cocoa/15 bg-cream/75 text-espresso"
                   }`}
@@ -124,7 +132,7 @@ export function ChatMessageList({ messages, emptyHint }: ChatMessageListProps) {
                         ) : (
                           <div
                             className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
-                              isCustomer
+                              isRightAligned
                                 ? "border-ivory/20 bg-ivory/10 text-ivory/90"
                                 : "border-cocoa/15 bg-ivory text-espresso"
                             }`}
@@ -149,11 +157,11 @@ export function ChatMessageList({ messages, emptyHint }: ChatMessageListProps) {
 
                   <div
                     className={`mt-1.5 flex items-center justify-end gap-1.5 text-[0.625rem] ${
-                      isCustomer ? "text-ivory/75" : "text-muted"
+                      isRightAligned ? "text-ivory/75" : "text-muted"
                     }`}
                   >
                     <span>{formatChatTime(message.createdAt)}</span>
-                    {isCustomer ? (
+                    {showReadStatus ? (
                       <span
                         aria-label={
                           message.status === "dibaca" ? "Pesan terbaca" : "Pesan terkirim"
@@ -162,7 +170,11 @@ export function ChatMessageList({ messages, emptyHint }: ChatMessageListProps) {
                       >
                         {message.status === "dibaca" ? (
                           <>
-                            <CheckDoubleIcon className="h-3.5 w-3.5 text-blush" />
+                            <CheckDoubleIcon
+                              className={`h-3.5 w-3.5 ${
+                                isRightAligned ? "text-blush" : "text-cocoa"
+                              }`}
+                            />
                             <span>Terbaca</span>
                           </>
                         ) : (

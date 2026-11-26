@@ -8,6 +8,7 @@ import { buttonClass } from "@/components/ui/ButtonLink";
 import {
   AlertCircleIcon,
   ArrowRight,
+  ChatIcon,
   CheckIcon,
   ClockIcon,
   FileTextIcon,
@@ -95,7 +96,15 @@ function parseRupiahInput(raw: string): number {
   return Number(digitsOnly);
 }
 
-export function AdminOrderManagement() {
+type AdminOrderManagementProps = {
+  focusedOrderCode?: string | null;
+  onOpenOrderChat?: (orderCode: string) => void;
+};
+
+export function AdminOrderManagement({
+  focusedOrderCode,
+  onOpenOrderChat,
+}: AdminOrderManagementProps = {}) {
   const [orders, setOrders] = useState<SubmittedOrder[]>([]);
   const [paymentConfig, setPaymentConfig] = useState<AdminPaymentConfig>(
     createDefaultAdminPaymentConfig
@@ -163,6 +172,15 @@ export function AdminOrderManagement() {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
+
+  useEffect(() => {
+    if (!focusedOrderCode) return;
+    const matched = orders.find((item) => item.orderCode === focusedOrderCode);
+    if (matched) {
+      setSelectedOrderId(matched.id);
+      setFilter("all");
+    }
+  }, [focusedOrderCode, orders]);
 
   const selectedOrder = useMemo(
     () => orders.find((item) => item.id === selectedOrderId) ?? null,
@@ -819,7 +837,7 @@ export function AdminOrderManagement() {
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge
                       label={ORDER_STATUS_META[selectedOrder.status].label}
                       tone={ORDER_STATUS_META[selectedOrder.status].tone}
@@ -828,6 +846,16 @@ export function AdminOrderManagement() {
                       label={getPaymentSummaryBadge(selectedOrder).label}
                       tone={getPaymentSummaryBadge(selectedOrder).tone}
                     />
+                    {onOpenOrderChat ? (
+                      <button
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
+                        onClick={() => onOpenOrderChat(selectedOrder.orderCode)}
+                        type="button"
+                      >
+                        <ChatIcon className="h-3.5 w-3.5" />
+                        Buka Chat Pesanan
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 

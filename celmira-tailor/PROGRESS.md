@@ -13,7 +13,7 @@
 | Measurement Studio | `/measurement-studio` | Selesai (lokal) | Mannequin SVG 2D adaptif 5 template, slider/angka/+/-, validasi cm, profil tersimpan & konsultasi chat |
 | Lacak & Daftar Pesanan | `/track` | Selesai (lokal) | Verifikasi akses 2 faktor, timeline 10 tahap produksi, persetujuan penawaran, Invoice DP 50% (batas 24 jam + proteksi unggah bukti), Invoice Pelunasan (ongkir terpisah) & tautan chat pesanan |
 | Chat Pelanggan | `/chat` | Selesai (Tahap 5A, lokal) | Floating chat terhubung store (sembunyi di `/chat`), daftar percakapan, ruang chat + status admin, waktu & indikator terkirim/terbaca, upload gambar terkompresi, konteks lintas halaman & proteksi privasi pesanan |
-| Admin Dashboard | `/admin` | Tahap 4 (lokal) | Pengelolaan pesanan masuk, penawaran harga akhir, konfigurasi QRIS resmi, verifikasi manual DP/pelunasan, kontrol 10 tahap produksi, invoice pelunasan, pengiriman/pengambilan & riwayat transaksi; balasan chat admin (Tahap 5B), autentikasi & manajemen template menyusul |
+| Admin Dashboard | `/admin` | Tahap 5B-1 (lokal) | Tab Pesanan & Invoice (penawaran, QRIS resmi, verifikasi manual DP/pelunasan, kontrol 10 tahap produksi, resi) + Tab Admin Chat Inbox (daftar inbox, filter Semua/Belum Dibaca/Aktif, pencarian nama/pesan/kode pesanan, riwayat, balasan admin & lampiran gambar, pengaturan identitas/status chat); autentikasi & manajemen template menyusul |
 | Backend & PostgreSQL | `/api/*` | Belum terintegrasi | Masih menggunakan penyimpanan browser lokal sementara |
 
 ## Riwayat Checkpoint
@@ -22,4 +22,5 @@
 - `a420b17` — Implementasi Design Studio (`/design-studio`) & Katalog Jahit (`/catalog`).
 - `cb0bdbf` — Implementasi Measurement Studio (`/measurement-studio`) dengan mannequin SVG 2D, 5 template kategori, validasi cm, dan integrasi booking flow.
 - `59fa7df` — Implementasi Order Tracking (`/track`), sistem Invoice DP 50% & Pelunasan (ongkir terpisah), aturan verifikasi manual & proteksi tenggat 24 jam, serta panel pengelolaan pesanan Admin (`/admin`).
-- *(Lokal, belum di-commit)* — Implementasi Tahap 5A: Customer Chat (`/chat`), Floating Chat interaktif, upload gambar referensi, konteks lintas halaman & proteksi privasi order context.
+- `dffa793` — Implementasi Tahap 5A: Customer Chat (`/chat`), Floating Chat interaktif, upload gambar referensi, konteks lintas halaman & proteksi privasi order context.
+- *(Lokal, belum di-commit)* — Implementasi Stage 5B-1: Admin Chat Inbox (`/admin` tab `Chat Pelanggan`), balasan admin + gambar referensi, sinkronisasi status `Terkirim` ↔ `Terbaca` pada `localStorage` browser lokal.

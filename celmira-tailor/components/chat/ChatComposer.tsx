@@ -13,6 +13,10 @@ type ChatComposerProps = {
   draftText: string;
   attachments: ChatMessageAttachment[];
   errorMessage: string | null;
+  placeholder?: string;
+  submitLabel?: string;
+  inputAriaLabel?: string;
+  uploadInputId?: string;
   onChangeText: (value: string) => void;
   onAddAttachments: (files: ChatMessageAttachment[]) => void;
   onRemoveAttachment: (id: string) => void;
@@ -24,6 +28,10 @@ export function ChatComposer({
   draftText,
   attachments,
   errorMessage,
+  placeholder = "Tulis pertanyaan desain, bahan, ukuran, atau pesanan Anda...",
+  submitLabel = "Kirim",
+  inputAriaLabel = "Tulis pesan untuk tim Celmira",
+  uploadInputId = "chat-image-upload",
   onChangeText,
   onAddAttachments,
   onRemoveAttachment,
@@ -107,7 +115,7 @@ export function ChatComposer({
           className={`inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-cocoa/25 bg-cream/45 text-espresso transition-colors hover:border-espresso hover:bg-cream ${
             attachments.length >= MAX_CHAT_IMAGES_PER_MESSAGE ? "pointer-events-none opacity-45" : ""
           }`}
-          htmlFor="chat-image-upload"
+          htmlFor={uploadInputId}
           title="Lampirkan gambar referensi (JPG, PNG, WEBP, maks 5 MB)"
         >
           <ImageIcon className="h-5 w-5" />
@@ -116,7 +124,7 @@ export function ChatComposer({
             accept="image/jpeg,image/png,image/webp"
             className="sr-only"
             disabled={attachments.length >= MAX_CHAT_IMAGES_PER_MESSAGE}
-            id="chat-image-upload"
+            id={uploadInputId}
             multiple
             onChange={handleFileSelect}
             type="file"
@@ -125,19 +133,19 @@ export function ChatComposer({
 
         <div className="min-w-0 flex-1">
           <textarea
-            aria-label="Tulis pesan untuk tim Celmira"
+            aria-label={inputAriaLabel}
             className="max-h-32 min-h-[2.75rem] w-full resize-none rounded-2xl border border-cocoa/25 bg-ivory px-4 py-2.5 text-sm text-espresso placeholder:text-muted/65 focus:border-espresso focus:outline-none"
             maxLength={MAX_CHAT_MESSAGE_LENGTH}
             onChange={(e) => onChangeText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Tulis pertanyaan desain, bahan, ukuran, atau pesanan Anda..."
+            placeholder={placeholder}
             rows={1}
             value={draftText}
           />
         </div>
 
         <button
-          aria-label="Kirim pesan"
+          aria-label={submitLabel}
           className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-5 text-xs font-medium uppercase tracking-[0.14em] transition-colors ${
             canSend
               ? "cursor-pointer bg-espresso text-ivory hover:bg-cocoa"
@@ -146,7 +154,7 @@ export function ChatComposer({
           disabled={!canSend}
           type="submit"
         >
-          <span className="hidden sm:inline">Kirim</span>
+          <span className="hidden sm:inline">{submitLabel}</span>
           <SendIcon className="h-4 w-4" />
         </button>
       </div>

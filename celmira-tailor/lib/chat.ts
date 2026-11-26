@@ -9,6 +9,7 @@ import type {
   ChatThreadSource,
   GarmentCategoryId,
   MeasurementTemplateId,
+  SubmittedOrder,
 } from "@/lib/types/tailor";
 
 export const MAX_CHAT_THREADS = 20;
@@ -229,6 +230,7 @@ export function deriveThreadTitle(context: ChatThreadContext, customTitle?: stri
 export function createChatThread(
   input: {
     title?: string;
+    customerName?: string;
     context?: Partial<ChatThreadContext>;
   } = {},
   now: Date = new Date()
@@ -251,6 +253,7 @@ export function createChatThread(
   return {
     id,
     title: deriveThreadTitle(context, input.title),
+    customerName: sanitizeShortParam(input.customerName, 80),
     source: context.source,
     context,
     createdAt: timestamp,
@@ -453,6 +456,120 @@ export function filterChatThreads(
 
 export function getTotalUnreadForCustomer(threads: ChatThread[]): number {
   return threads.reduce((sum, thread) => sum + Math.max(0, thread.unreadByCustomer), 0);
+}
+
+export function getTotalUnreadForAdmin(threads: ChatThread[]): number {
+  return threads.reduce((sum, thread) => sum + Math.max(0, thread.unreadByAdmin), 0);
+}
+
+export type AdminChatFilter = "all" | "unread" | "active";
+
+export type ResolvedThreadCustomer = {
+  customerName: string;
+  order: SubmittedOrder | null;
+};
+
+export function resolveThreadCustomerDisplay(
+  thread: ChatThread,
+  orders: SubmittedOrder[]
+): ResolvedThreadCustomer {
+  const order = thread.context.orderCode
+    ? orders.find((item) => item.orderCode === thread.context.orderCode) ?? null
+    : null;
+
+  const customerName =
+    order?.customer.fullName?.trim() ||
+    thread.customerName?.trim() ||
+    "Pelanggan (Browser Lokal)";
+
+  return { customerName, order };
+}
+
+export function appendAdminMessage(
+  thread: ChatThread,
+  input: {
+    body: string;
+    attachments?: ChatMessageAttachment[];
+    senderName?: string;
+  },
+  now: Date = new Date()
+): { ok: true; thread: ChatThread; message: ChatMessage } | { ok: false; error: string } {
+  const attachments = (input.attachments ?? []).slice(0, MAX_CHAT_IMAGES_PER_MESSAGE);
+  const validation = validateChatMessageInput(input.body, attachments);
+  if (!validation.valid) {
+    return { ok: false, error: validation.error ?? "Balasan tidak valid." };
+  }
+
+  const readThread = markCustomerMessagesReadByAdmin(thread, now);
+  const timestamp = now.toISOString();
+  const message: ChatMessage = {
+    id: `msg-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
+    threadId: readThread.id,
+    sender: "admin",
+    senderName: input.senderName?.trim() || "Tim Atelier Celmira",
+    body: input.body.trim(),
+    attachments: attachments.map((item) => ({
+      ...item,
+      previewDataUrl:
+        item.previewDataUrl && item.previewDataUrl.length <= MAX_CHAT_IMAGE_DATA_URL_LENGTH
+          ? item.previewDataUrl
+          : undefined,
+    })),
+    createdAt: timestamp,
+    status: "terkirim",
+  };
+
+  const nextMessages = [...readThread.messages, message].slice(-MAX_MESSAGES_PER_THREAD);
+
+  return {
+    ok: true,
+    message,
+    thread: {
+      ...readThread,
+      updatedAt: timestamp,
+      unreadByAdmin: 0,
+      unreadByCustomer: readThread.unreadByCustomer + 1,
+      messages: nextMessages,
+    },
+  };
+}
+
+export function filterAdminChatThreads(
+  threads: ChatThread[],
+  options: {
+    query?: string;
+    filter?: AdminChatFilter;
+    orders?: SubmittedOrder[];
+  } = {}
+): ChatThread[] {
+  const normalizedQuery = (options.query ?? "").trim().toLowerCase();
+  const filter = options.filter ?? "all";
+  const orders = options.orders ?? [];
+
+  return [...threads]
+    .filter((thread) => {
+      if (filter === "unread" && thread.unreadByAdmin <= 0) {
+        return false;
+      }
+      if (filter === "active" && thread.messages.length === 0) {
+        return false;
+      }
+      if (!normalizedQuery) return true;
+
+      const { customerName, order } = resolveThreadCustomerDisplay(thread, orders);
+      const haystacks = [
+        customerName,
+        thread.title,
+        thread.context.orderCode ?? "",
+        order?.designTitle ?? "",
+        order?.categoryName ?? "",
+        thread.context.designTitle ?? "",
+        thread.context.measurementLabel ?? "",
+        ...thread.messages.map((msg) => msg.body),
+      ];
+      return haystacks.some((item) => item.toLowerCase().includes(normalizedQuery));
+    })
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
 export function formatChatTime(iso: string): string {
