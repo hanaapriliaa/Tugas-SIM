@@ -32,18 +32,35 @@ export function OrderConfirmationView({
 
       <div className="mt-6 rounded-2xl border border-cocoa/15 bg-ivory p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-4 border-b border-cocoa/10 pb-4">
-          <div>
-            <p className="text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
-              Kode Referensi Pesanan
-            </p>
-            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl text-espresso">
-              {order.orderCode}
-            </p>
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <p className="text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
+                Kode Referensi Pesanan
+              </p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-2xl text-espresso">
+                {order.orderCode}
+              </p>
+            </div>
+            <div>
+              <p className="text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
+                Kode Akses Tracking
+              </p>
+              <p className="mt-1 font-mono text-lg font-semibold tracking-[0.16em] text-cocoa">
+                {order.trackingAccessCode}
+              </p>
+            </div>
           </div>
           <span className="rounded-full border border-cocoa/25 bg-cream px-3 py-1 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-cocoa">
             Menunggu Penawaran
           </span>
         </div>
+
+        <p className="mt-3 text-xs leading-relaxed text-muted">
+          Simpan <strong className="font-medium text-espresso">Kode Referensi Pesanan</strong>{" "}
+          beserta <strong className="font-medium text-espresso">Kode Akses Tracking</strong> (atau
+          nomor WhatsApp terdaftar) untuk memantau status pesanan dan invoice di halaman Lacak
+          Pesanan.
+        </p>
 
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
@@ -77,7 +94,10 @@ export function OrderConfirmationView({
       </div>
 
       <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Link className={buttonClass("solid")} href="/track">
+        <Link
+          className={buttonClass("solid")}
+          href={`/track?code=${encodeURIComponent(order.orderCode)}`}
+        >
           Lihat di Lacak Pesanan
           <ArrowRight className="h-4 w-4" />
         </Link>

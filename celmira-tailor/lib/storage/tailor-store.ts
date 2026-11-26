@@ -15,7 +15,14 @@ import {
   removeMeasurementProfile,
   upsertMeasurementProfile,
 } from "@/lib/measurement-studio";
+import {
+  createDefaultAdminPaymentConfig,
+  createHistoryEvent,
+  generateTrackingAccessCode,
+  normalizeSubmittedOrder,
+} from "@/lib/order-tracking";
 import type {
+  AdminPaymentConfig,
   DesignStudioSavedConfig,
   MeasurementProfile,
   MeasurementTemplateConfig,
@@ -29,6 +36,7 @@ export const STORAGE_KEYS = {
   designs: "celmira_designs_v1",
   measurements: "celmira_measurements_v1",
   measurementTemplates: "celmira_measurement_templates_v1",
+  paymentConfig: "celmira_payment_config_v1",
 } as const;
 
 function isBrowser(): boolean {
@@ -200,10 +208,46 @@ export function resetMeasurementTemplates(): MeasurementTemplateConfig[] {
 
 export function loadSubmittedOrders(): SubmittedOrder[] {
   if (!isBrowser()) return [];
-  return safeParseJson<SubmittedOrder[]>(
+  const raw = safeParseJson<SubmittedOrder[]>(
     window.localStorage.getItem(STORAGE_KEYS.orders),
     []
   );
+  if (!Array.isArray(raw)) return [];
+  return raw.map((order) => normalizeSubmittedOrder(order));
+}
+
+function sanitizeOrderForStorage(order: SubmittedOrder): SubmittedOrder {
+  return {
+    ...order,
+    attachments: order.attachments.map((file) => ({
+      ...file,
+      previewDataUrl:
+        file.previewDataUrl && file.previewDataUrl.length <= 160_000
+          ? file.previewDataUrl
+          : undefined,
+    })),
+    payments: order.payments.map((payment) => ({
+      ...payment,
+      proofPreviewDataUrl:
+        payment.proofPreviewDataUrl && payment.proofPreviewDataUrl.length <= 180_000
+          ? payment.proofPreviewDataUrl
+          : undefined,
+    })),
+  };
+}
+
+export function saveSubmittedOrders(orders: SubmittedOrder[]): void {
+  if (!isBrowser()) return;
+  const sanitized = orders.map((order) => sanitizeOrderForStorage(order));
+  const ok = safeSetItem(STORAGE_KEYS.orders, sanitized);
+  if (!ok) {
+    const lightweight = sanitized.map((order) => ({
+      ...order,
+      attachments: order.attachments.map(({ previewDataUrl: _a, ...rest }) => rest),
+      payments: order.payments.map(({ proofPreviewDataUrl: _p, ...rest }) => rest),
+    }));
+    safeSetItem(STORAGE_KEYS.orders, lightweight);
+  }
 }
 
 export function generateOrderCode(now: Date = new Date()): string {
@@ -250,16 +294,19 @@ export function createSubmittedOrderFromDraft(
         : undefined,
   }));
 
+  const categoryName = category?.name ?? draft.categoryId;
+
   return {
     id,
     orderCode: generateOrderCode(now),
+    trackingAccessCode: generateTrackingAccessCode(),
     createdAt: timestamp,
     updatedAt: timestamp,
     persistenceMode: "local-browser",
     status: "menunggu_penawaran",
-    productionStage: "antrian_penawaran",
+    productionStage: "menunggu_produksi",
     categoryId: draft.categoryId,
-    categoryName: category?.name ?? draft.categoryId,
+    categoryName,
     designSource: draft.designSource,
     designTitle,
     selectedCelmiraDesignId:
@@ -289,29 +336,81 @@ export function createSubmittedOrderFromDraft(
     },
     targetDate: draft.targetDate,
     invoice: {
+      quoteStatus: "belum_dikirim",
       tailoringFee: null,
-      shippingFee: null,
+      shippingFee: draft.delivery.method === "pickup" ? 0 : null,
       dpAmount: null,
       dpDueAt: null,
       settlementTailoringAmount: null,
       settlementTotalAmount: null,
     },
     payments: [],
+    history: [
+      createHistoryEvent(
+        {
+          actor: "customer",
+          category: "pesanan",
+          title: "Pengajuan pesanan dikirim",
+          description: `Pesanan ${categoryName} (${designTitle}) diajukan dan menunggu peninjauan harga akhir oleh admin.`,
+          orderStatus: "menunggu_penawaran",
+          productionStage: "menunggu_produksi",
+        },
+        now
+      ),
+    ],
   };
 }
 
 export function saveSubmittedOrder(order: SubmittedOrder): SubmittedOrder {
   const existing = loadSubmittedOrders();
-  const next = [order, ...existing];
-  const ok = safeSetItem(STORAGE_KEYS.orders, next);
-  if (!ok) {
-    const lightweightOrder: SubmittedOrder = {
-      ...order,
-      attachments: order.attachments.map(({ previewDataUrl: _ignored, ...rest }) => rest),
-    };
-    safeSetItem(STORAGE_KEYS.orders, [lightweightOrder, ...existing]);
+  const normalized = normalizeSubmittedOrder(order);
+  const next = [normalized, ...existing.filter((item) => item.id !== normalized.id)];
+  saveSubmittedOrders(next);
+  return normalized;
+}
+
+export function updateSubmittedOrder(updated: SubmittedOrder): SubmittedOrder {
+  const existing = loadSubmittedOrders();
+  const normalized = normalizeSubmittedOrder(updated);
+  const exists = existing.some((item) => item.id === normalized.id);
+  const next = exists
+    ? existing.map((item) => (item.id === normalized.id ? normalized : item))
+    : [normalized, ...existing];
+  saveSubmittedOrders(next);
+  return normalized;
+}
+
+export function loadAdminPaymentConfig(): AdminPaymentConfig {
+  if (!isBrowser()) return createDefaultAdminPaymentConfig();
+  const stored = safeParseJson<Partial<AdminPaymentConfig> | null>(
+    window.localStorage.getItem(STORAGE_KEYS.paymentConfig),
+    null
+  );
+  const defaults = createDefaultAdminPaymentConfig();
+  if (!stored) return defaults;
+  return {
+    ...defaults,
+    ...stored,
+    dpWindowHours:
+      typeof stored.dpWindowHours === "number" && stored.dpWindowHours >= 1
+        ? Math.round(stored.dpWindowHours)
+        : defaults.dpWindowHours,
+  };
+}
+
+export function saveAdminPaymentConfig(config: AdminPaymentConfig): AdminPaymentConfig {
+  const payload: AdminPaymentConfig = {
+    ...config,
+    updatedAt: new Date().toISOString(),
+  };
+  const ok = safeSetItem(STORAGE_KEYS.paymentConfig, payload);
+  if (!ok && payload.qrisImageDataUrl) {
+    safeSetItem(STORAGE_KEYS.paymentConfig, {
+      ...payload,
+      qrisImageDataUrl: undefined,
+    });
   }
-  return order;
+  return payload;
 }
 
 export function saveSavedDesigns(designs: DesignStudioSavedConfig[]): void {

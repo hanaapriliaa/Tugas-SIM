@@ -212,53 +212,119 @@ export type OrderDraft = {
 
 export type OrderStatus =
   | "menunggu_penawaran"
+  | "penawaran_dikirim"
+  | "penawaran_ditolak"
   | "menunggu_dp"
   | "menunggu_verifikasi_dp"
+  | "perlu_tinjauan_admin"
   | "dalam_produksi"
   | "selesai_jahit_menunggu_pelunasan"
   | "menunggu_verifikasi_pelunasan"
   | "siap_diambil_atau_dikirim"
-  | "selesai";
+  | "dalam_pengiriman"
+  | "selesai"
+  | "dibatalkan";
 
 export type ProductionStage =
-  | "antrian_penawaran"
-  | "menunggu_dp"
-  | "pemotongan_bahan"
-  | "penjahitan"
-  | "finishing"
-  | "quality_check"
-  | "siap_serah_terima"
-  | "selesai";
+  | "menunggu_produksi"
+  | "persiapan_bahan"
+  | "pemotongan_kain"
+  | "proses_penjahitan"
+  | "finishing_qc"
+  | "selesai_dikerjakan"
+  | "menunggu_pelunasan"
+  | "siap_dikirim_atau_diambil"
+  | "dalam_pengiriman_atau_siap_diambil"
+  | "pesanan_selesai";
+
+export type QuoteStatus =
+  | "belum_dikirim"
+  | "menunggu_persetujuan"
+  | "disetujui"
+  | "ditolak";
 
 export type PaymentStage = "dp" | "pelunasan";
 
+export type PaymentVerificationStatus =
+  | "belum_unggah"
+  | "menunggu_verifikasi_admin"
+  | "terverifikasi"
+  | "ditolak";
+
 export type PaymentRecord = {
   id: string;
+  invoiceNumber?: string;
   stage: PaymentStage;
   tailoringPortion: number;
   shippingPortion: number;
   totalAmount: number;
   method: "qris";
   proofFileName?: string;
+  proofMimeType?: string;
+  proofSize?: number;
+  proofPreviewDataUrl?: string;
   proofUploadedAt?: string;
-  verificationStatus: "belum_unggah" | "menunggu_verifikasi_admin" | "terverifikasi" | "ditolak";
+  customerNote?: string;
+  verificationStatus: PaymentVerificationStatus;
   verifiedAt?: string;
   adminNote?: string;
 };
 
 export type OrderInvoice = {
+  quoteStatus: QuoteStatus;
+  quoteSentAt?: string;
+  quoteRespondedAt?: string;
+  quoteRejectionReason?: string;
   tailoringFee: number | null;
   shippingFee: number | null;
+  dpInvoiceNumber?: string;
+  dpIssuedAt?: string;
   dpAmount: number | null;
   dpDueAt: string | null;
+  settlementInvoiceNumber?: string;
+  settlementIssuedAt?: string;
   settlementTailoringAmount: number | null;
   settlementTotalAmount: number | null;
   quoteNote?: string;
 };
 
+export type OrderHistoryCategory =
+  | "pesanan"
+  | "penawaran"
+  | "pembayaran"
+  | "produksi"
+  | "pengiriman"
+  | "pembatalan";
+
+export type OrderHistoryEvent = {
+  id: string;
+  timestamp: string;
+  actor: "customer" | "admin" | "system";
+  category: OrderHistoryCategory;
+  title: string;
+  description: string;
+  orderStatus?: OrderStatus;
+  productionStage?: ProductionStage;
+};
+
+/**
+ * Konfigurasi pembayaran resmi yang dikelola admin.
+ * Tidak menyimpan QRIS palsu maupun nomor rekening fiktif secara bawaan.
+ */
+export type AdminPaymentConfig = {
+  qrisImageDataUrl?: string;
+  qrisFileName?: string;
+  qrisMerchantName?: string;
+  qrisUpdatedAt?: string;
+  paymentInstructions: string;
+  dpWindowHours: number;
+  updatedAt: string;
+};
+
 export type SubmittedOrder = {
   id: string;
   orderCode: string;
+  trackingAccessCode: string;
   createdAt: string;
   updatedAt: string;
   persistenceMode: "local-browser";
@@ -276,8 +342,15 @@ export type SubmittedOrder = {
   customer: CustomerIdentity;
   delivery: DeliveryDetails;
   targetDate: string;
+  estimatedCompletionDate?: string;
   invoice: OrderInvoice;
   payments: PaymentRecord[];
   trackingNumber?: string;
   courierName?: string;
+  pickupReadyNote?: string;
+  shippedAt?: string;
+  completedAt?: string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  history: OrderHistoryEvent[];
 };
