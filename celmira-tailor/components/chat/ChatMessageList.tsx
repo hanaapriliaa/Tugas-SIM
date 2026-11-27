@@ -112,8 +112,9 @@ export function ChatMessageList({
                         message.attachments.length > 1 ? "grid-cols-2" : "grid-cols-1"
                       } ${message.body ? "mb-2.5" : ""}`}
                     >
-                      {message.attachments.map((att) =>
-                        att.previewDataUrl ? (
+                      {message.attachments.map((att) => {
+                        const imgSrc = att.url ?? att.previewDataUrl;
+                        return imgSrc ? (
                           <button
                             className="group relative overflow-hidden rounded-xl border border-ivory/20 bg-ivory/10 text-left"
                             key={att.id}
@@ -123,7 +124,7 @@ export function ChatMessageList({
                             <img
                               alt={`Lampiran ${att.name}`}
                               className="max-h-52 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                              src={att.previewDataUrl}
+                              src={imgSrc}
                             />
                             <span className="block truncate px-2 py-1 text-[0.625rem] opacity-85">
                               {att.name}
@@ -146,8 +147,8 @@ export function ChatMessageList({
                               </p>
                             </div>
                           </div>
-                        )
-                      )}
+                        );
+                      })}
                     </div>
                   ) : null}
 
@@ -195,7 +196,7 @@ export function ChatMessageList({
       </div>
 
       {/* Modal Pratinjau Gambar */}
-      {lightboxImage?.previewDataUrl ? (
+      {lightboxImage && (lightboxImage.url || lightboxImage.previewDataUrl) ? (
         <div
           aria-label={`Pratinjau ${lightboxImage.name}`}
           aria-modal="true"
@@ -223,7 +224,7 @@ export function ChatMessageList({
             <img
               alt={lightboxImage.name}
               className="max-h-[75vh] w-auto rounded-xl object-contain"
-              src={lightboxImage.previewDataUrl}
+              src={lightboxImage.url ?? lightboxImage.previewDataUrl}
             />
           </div>
         </div>

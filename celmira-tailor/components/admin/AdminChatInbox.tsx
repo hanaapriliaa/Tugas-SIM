@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { StatusBadge } from "@/components/track/StatusBadge";
 import { buttonClass } from "@/components/ui/ButtonLink";
 import {
-  AlertCircleIcon,
   ArrowLeft,
   ArrowUpRight,
   ChatIcon,
@@ -14,45 +13,63 @@ import {
 } from "@/components/ui/icons";
 import {
   CHAT_SOURCE_LABELS,
-  appendAdminMessage,
   buildOfficialWhatsappHref,
   createDefaultAdminChatConfig,
   filterAdminChatThreads,
   formatChatTime,
   getTotalUnreadForAdmin,
-  markCustomerMessagesReadByAdmin,
   resolveThreadCustomerDisplay,
   type AdminChatFilter,
 } from "@/lib/chat";
-import { ORDER_STATUS_META, formatDateOnlyId } from "@/lib/order-tracking";
 import {
-  CHAT_UPDATED_EVENT,
-  loadAdminChatConfig,
-  loadChatThreads,
-  loadSubmittedOrders,
-  saveAdminChatConfig,
-  upsertChatThread,
-} from "@/lib/storage/tailor-store";
+  fetchAdminThreads,
+  generateClientMessageId,
+  markAdminThreadReadApi,
+  sendAdminReplyApi,
+  updateAdminChatConfigApi,
+  uploadChatAttachmentApi,
+} from "@/lib/chat-client";
+import { startChatRealtime } from "@/lib/chat-realtime";
+import { ORDER_STATUS_META, formatDateOnlyId } from "@/lib/order-tracking";
+import { loadSubmittedOrders } from "@/lib/storage/tailor-store";
 import type {
   AdminChatConfig,
+  ChatConnectionStatus,
   ChatMessageAttachment,
   ChatThread,
   SubmittedOrder,
 } from "@/lib/types/tailor";
 
+type PendingUpload = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
+const CONNECTION_LABELS: Record<ChatConnectionStatus, string> = {
+  connecting: "Menyambungkan...",
+  realtime: "Real-time aktif",
+  polling: "Sinkronisasi berkala",
+  reconnecting: "Menyambung ulang...",
+  offline: "Koneksi terputus",
+};
+
 type AdminChatInboxProps = {
   focusedOrderCode?: string | null;
   onOpenOrderDetail?: (orderCode: string) => void;
+  onUnreadCountChange?: (count: number) => void;
 };
 
 export function AdminChatInbox({
   focusedOrderCode,
   onOpenOrderDetail,
+  onUnreadCountChange,
 }: AdminChatInboxProps) {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [orders, setOrders] = useState<SubmittedOrder[]>([]);
   const [chatConfig, setChatConfig] = useState<AdminChatConfig>(createDefaultAdminChatConfig);
   const [hydrated, setHydrated] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ChatConnectionStatus>("connecting");
 
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [filter, setFilter] = useState<AdminChatFilter>("all");
@@ -60,9 +77,10 @@ export function AdminChatInbox({
   const [mobileView, setMobileView] = useState<"list" | "thread">("list");
 
   const [replyText, setReplyText] = useState("");
-  const [replyAttachments, setReplyAttachments] = useState<ChatMessageAttachment[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   // Panel pengaturan identitas/status admin & WhatsApp resmi
   const [showConfigPanel, setShowConfigPanel] = useState(false);
@@ -71,46 +89,86 @@ export function AdminChatInbox({
   const [availabilityNoteInput, setAvailabilityNoteInput] = useState("");
   const [whatsappInput, setWhatsappInput] = useState("");
   const [configError, setConfigError] = useState<string | null>(null);
+  const [savingConfig, setSavingConfig] = useState(false);
 
-  const syncFromStore = () => {
-    const loadedThreads = loadChatThreads();
-    const loadedOrders = loadSubmittedOrders();
-    const loadedConfig = loadAdminChatConfig();
-    setThreads(loadedThreads);
-    setOrders(loadedOrders);
-    setChatConfig(loadedConfig);
-    return { loadedThreads, loadedOrders, loadedConfig };
-  };
+  const selectedThreadIdRef = useRef<string | null>(null);
+  const pendingClientMsgIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const { loadedThreads, loadedConfig } = syncFromStore();
-    setAdminNameInput(loadedConfig.adminDisplayName);
-    setStatusLabelInput(loadedConfig.statusLabel);
-    setAvailabilityNoteInput(loadedConfig.availabilityNote);
-    setWhatsappInput(loadedConfig.officialWhatsappNumber ?? "");
+    selectedThreadIdRef.current = selectedThreadId;
+  }, [selectedThreadId]);
 
-    if (loadedThreads.length > 0) {
-      setSelectedThreadId(loadedThreads[0].id);
+  const syncFromServer = useCallback(async () => {
+    try {
+      const data = await fetchAdminThreads();
+      setThreads(data.threads);
+      setChatConfig(data.config);
+      setOrders(loadSubmittedOrders());
+      onUnreadCountChange?.(data.totalUnreadForAdmin);
+
+      const openId = selectedThreadIdRef.current;
+      if (openId) {
+        const openThread = data.threads.find((item) => item.id === openId);
+        if (openThread && openThread.unreadByAdmin > 0) {
+          const readRes = await markAdminThreadReadApi(openId);
+          const nextThreads = data.threads.map((item) =>
+            item.id === openId ? readRes.thread : item
+          );
+          setThreads(nextThreads);
+          onUnreadCountChange?.(getTotalUnreadForAdmin(nextThreads));
+        }
+      }
+
+      return data;
+    } catch {
+      return null;
     }
-    setHydrated(true);
+  }, [onUnreadCountChange]);
 
-    const onSync = () => {
-      syncFromStore();
-    };
-    window.addEventListener("storage", onSync);
-    window.addEventListener(CHAT_UPDATED_EVENT, onSync);
+  useEffect(() => {
+    let active = true;
+
+    async function bootstrap() {
+      const data = await syncFromServer();
+      if (!active) return;
+
+      if (data) {
+        setAdminNameInput(data.config.adminDisplayName);
+        setStatusLabelInput(data.config.statusLabel);
+        setAvailabilityNoteInput(data.config.availabilityNote);
+        setWhatsappInput(data.config.officialWhatsappNumber ?? "");
+
+        if (data.threads.length > 0 && !selectedThreadIdRef.current) {
+          setSelectedThreadId(data.threads[0].id);
+        }
+      }
+      setHydrated(true);
+    }
+
+    void bootstrap();
     return () => {
-      window.removeEventListener("storage", onSync);
-      window.removeEventListener(CHAT_UPDATED_EVENT, onSync);
+      active = false;
     };
-  }, []);
+  }, [syncFromServer]);
 
-  // Jika diarahkan dari tombol "Buka Chat Pesanan" dengan kode pesanan tertentu
+  useEffect(() => {
+    if (!hydrated) return;
+    return startChatRealtime({
+      role: "admin",
+      enabled: true,
+      onStatusChange: setConnectionStatus,
+      onEvent: () => {
+        void syncFromServer();
+      },
+      onSyncNeeded: syncFromServer,
+    });
+  }, [hydrated, syncFromServer]);
+
   useEffect(() => {
     if (!focusedOrderCode) return;
     const match = threads.find((item) => item.context.orderCode === focusedOrderCode);
     if (match) {
-      handleSelectThread(match.id);
+      void handleSelectThread(match.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedOrderCode]);
@@ -136,46 +194,109 @@ export function AdminChatInbox({
     [threads]
   );
 
-  function handleSelectThread(threadId: string) {
+  const composerAttachments: ChatMessageAttachment[] = useMemo(
+    () =>
+      pendingUploads.map((item) => ({
+        id: item.id,
+        name: item.file.name,
+        size: item.file.size,
+        mimeType: item.file.type,
+        previewDataUrl: item.previewUrl,
+      })),
+    [pendingUploads]
+  );
+
+  async function handleSelectThread(threadId: string) {
     setReplyError(null);
     setFeedback(null);
     setSelectedThreadId(threadId);
     setMobileView("thread");
 
     const target = threads.find((item) => item.id === threadId);
-    if (!target) return;
-
-    const marked = markCustomerMessagesReadByAdmin(target);
-    if (marked !== target) {
-      const updatedList = upsertChatThread(marked);
-      setThreads(updatedList);
+    if (target && target.unreadByAdmin > 0) {
+      try {
+        const res = await markAdminThreadReadApi(threadId);
+        const nextThreads = threads.map((item) => (item.id === threadId ? res.thread : item));
+        setThreads(nextThreads);
+        onUnreadCountChange?.(getTotalUnreadForAdmin(nextThreads));
+      } catch {
+        // Akan tersinkron ulang
+      }
     }
   }
 
-  function handleSendReply() {
-    if (!selectedThread) return;
+  function handleAddRawFiles(files: File[]) {
+    const created: PendingUpload[] = files.map((file) => ({
+      id: `pending-admin-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setPendingUploads((prev) => [...prev, ...created]);
+    pendingClientMsgIdRef.current = null;
+  }
+
+  function handleRemovePendingUpload(id: string) {
+    setPendingUploads((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((item) => item.id !== id);
+    });
+  }
+
+  async function handleSendReply() {
+    if (!selectedThread || isSending) return;
     setReplyError(null);
     setFeedback(null);
 
-    const result = appendAdminMessage(selectedThread, {
-      body: replyText,
-      attachments: replyAttachments,
-      senderName: chatConfig.adminDisplayName,
-    });
-
-    if (!result.ok) {
-      setReplyError(result.error);
+    if (!replyText.trim() && pendingUploads.length === 0) {
+      setReplyError("Tulis balasan atau lampirkan minimal 1 gambar sebelum mengirim.");
       return;
     }
 
-    const updated = upsertChatThread(result.thread);
-    setThreads(updated);
-    setReplyText("");
-    setReplyAttachments([]);
-    setFeedback("Balasan admin berhasil disimpan pada percakapan lokal.");
+    setIsSending(true);
+    try {
+      const uploadedIds: string[] = [];
+      for (const item of pendingUploads) {
+        const uploaded = await uploadChatAttachmentApi(selectedThread.id, item.file, "admin");
+        uploadedIds.push(uploaded.id);
+      }
+
+      const clientMessageId = pendingClientMsgIdRef.current ?? generateClientMessageId();
+      pendingClientMsgIdRef.current = clientMessageId;
+
+      const sent = await sendAdminReplyApi(selectedThread.id, {
+        body: replyText,
+        senderName: chatConfig.adminDisplayName,
+        clientMessageId,
+        attachmentIds: uploadedIds,
+      });
+
+      pendingClientMsgIdRef.current = null;
+      for (const item of pendingUploads) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+      setPendingUploads([]);
+      setReplyText("");
+
+      const nextThreads = [
+        sent.thread,
+        ...threads.filter((item) => item.id !== sent.thread.id),
+      ];
+      setThreads(nextThreads);
+      onUnreadCountChange?.(getTotalUnreadForAdmin(nextThreads));
+      setFeedback("Balasan admin terkirim ke server secara real-time.");
+    } catch (err) {
+      setReplyError(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengirim balasan admin. Coba klik Kirim Balasan lagi."
+      );
+    } finally {
+      setIsSending(false);
+    }
   }
 
-  function handleSaveConfig(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setConfigError(null);
     setFeedback(null);
@@ -188,24 +309,34 @@ export function AdminChatInbox({
       return;
     }
 
-    const saved = saveAdminChatConfig({
-      ...chatConfig,
-      adminDisplayName: adminNameInput.trim() || "Tim Atelier Celmira",
-      statusLabel: statusLabelInput.trim() || "Siap menerima pesan · Mode lokal",
-      availabilityNote:
-        availabilityNoteInput.trim() ||
-        createDefaultAdminChatConfig().availabilityNote,
-      officialWhatsappNumber: trimmedWhatsapp || undefined,
-      updatedAt: new Date().toISOString(),
-    });
-    setChatConfig(saved);
-    setShowConfigPanel(false);
-    setFeedback("Pengaturan identitas & status chat admin disimpan.");
+    setSavingConfig(true);
+    try {
+      const res = await updateAdminChatConfigApi({
+        adminDisplayName: adminNameInput.trim() || "Tim Atelier Celmira",
+        statusLabel: statusLabelInput.trim() || "Online · Terhubung ke server",
+        availabilityNote:
+          availabilityNoteInput.trim() || createDefaultAdminChatConfig().availabilityNote,
+        officialWhatsappNumber: trimmedWhatsapp || null,
+      });
+      setChatConfig(res.config);
+      setShowConfigPanel(false);
+      setFeedback("Pengaturan identitas & status chat admin disimpan di server.");
+    } catch (err) {
+      setConfigError(
+        err instanceof Error ? err.message : "Gagal menyimpan pengaturan chat admin."
+      );
+    } finally {
+      setSavingConfig(false);
+    }
   }
 
   const filterTabs: Array<{ id: AdminChatFilter; label: string; count: number }> = [
     { id: "all", label: "Semua", count: threads.length },
-    { id: "unread", label: "Belum Dibaca", count: totalUnread > 0 ? threads.filter((t) => t.unreadByAdmin > 0).length : 0 },
+    {
+      id: "unread",
+      label: "Belum Dibaca",
+      count: totalUnread > 0 ? threads.filter((t) => t.unreadByAdmin > 0).length : 0,
+    },
     { id: "active", label: "Aktif", count: activeCount },
   ];
 
@@ -218,16 +349,25 @@ export function AdminChatInbox({
             <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.24em] text-cocoa">
               Komunikasi Pelanggan
             </p>
-            <span className="rounded-full border border-cocoa/25 bg-cream px-3 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-cocoa">
-              Stage 5B-1 · Mode Lokal
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-cocoa/25 bg-cream px-3 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-cocoa">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  connectionStatus === "realtime"
+                    ? "bg-emerald-700"
+                    : connectionStatus === "offline"
+                      ? "bg-rose"
+                      : "bg-cocoa"
+                }`}
+              />
+              {CONNECTION_LABELS[connectionStatus]}
             </span>
           </div>
           <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl text-espresso sm:text-4xl">
             Admin Chat Inbox
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-            Tinjau pesan, gambar referensi, dan konteks pesanan dari pelanggan pada browser ini,
-            lalu kirim balasan resmi admin secara langsung.
+            Terima pesan, foto referensi, dan konteks pesanan dari pelanggan lintas perangkat secara
+            real-time, lalu kirim balasan resmi admin dari sini.
           </p>
         </div>
 
@@ -240,25 +380,14 @@ export function AdminChatInbox({
         </button>
       </div>
 
-      {/* Catatan Keterbatasan localStorage (Jujur) */}
-      <div className="flex items-start gap-3 rounded-2xl border border-cocoa/18 bg-cream/60 p-4 text-xs leading-relaxed text-muted">
-        <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-cocoa" />
-        <p>
-          <strong className="font-semibold text-espresso">Keterbatasan Penyimpanan Lokal:</strong>{" "}
-          Inbox ini membaca thread yang sama dengan halaman <code>/chat</code> pelanggan melalui{" "}
-          <code>localStorage</code> pada browser dan perangkat yang sama (sinkron otomatis antar-tab).
-          Belum tersedia backend atau sinkronisasi antarperangkat secara real-time sebelum Tahap 6.
-        </p>
-      </div>
-
-      {/* Panel Pengaturan Chat Admin (Opsional) */}
+      {/* Panel Pengaturan Chat Admin */}
       {showConfigPanel ? (
         <section className="rounded-[1.75rem] border border-cocoa/18 bg-cream/55 p-5 sm:p-6">
           <h3 className="font-[family-name:var(--font-display)] text-xl text-espresso">
             Identitas Admin &amp; Alternatif WhatsApp Resmi
           </h3>
           <p className="mt-1 text-xs text-muted">
-            Informasi ini tampil pada header halaman chat pelanggan dan panel floating chat.
+            Disimpan di server dan otomatis tampil pada halaman chat pelanggan serta floating chat.
           </p>
 
           <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleSaveConfig}>
@@ -341,8 +470,12 @@ export function AdminChatInbox({
               >
                 Batal
               </button>
-              <button className={buttonClass("solid", "cursor-pointer")} type="submit">
-                Simpan Pengaturan Chat
+              <button
+                className={buttonClass("solid", "cursor-pointer")}
+                disabled={savingConfig}
+                type="submit"
+              >
+                {savingConfig ? "Menyimpan..." : "Simpan Pengaturan Chat"}
               </button>
             </div>
           </form>
@@ -420,7 +553,7 @@ export function AdminChatInbox({
           {/* List Percakapan */}
           <div className="mt-4 max-h-[34rem] space-y-2.5 overflow-y-auto pr-0.5">
             {!hydrated ? (
-              <p className="py-6 text-center text-xs text-muted">Memuat percakapan...</p>
+              <p className="py-6 text-center text-xs text-muted">Memuat percakapan dari server...</p>
             ) : filteredThreads.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-cocoa/20 bg-ivory/75 p-5 text-center text-xs leading-relaxed text-muted">
                 <ChatIcon className="mx-auto h-5 w-5 text-cocoa/60" />
@@ -430,8 +563,7 @@ export function AdminChatInbox({
                     : "Tidak ada percakapan yang cocok dengan filter."}
                 </p>
                 <p className="mt-1">
-                  Pesan yang dikirim pelanggan melalui halaman <code>/chat</code> atau Floating Chat
-                  pada browser ini akan otomatis muncul di sini.
+                  Pesan yang dikirim pelanggan dari perangkat mana pun akan langsung tampil di sini.
                 </p>
               </div>
             ) : (
@@ -451,7 +583,7 @@ export function AdminChatInbox({
                         : "border-cocoa/12 bg-ivory/75 hover:border-cocoa/40 hover:bg-ivory"
                     }`}
                     key={thread.id}
-                    onClick={() => handleSelectThread(thread.id)}
+                    onClick={() => void handleSelectThread(thread.id)}
                     type="button"
                   >
                     <div className="flex min-w-0 items-start justify-between gap-2">
@@ -590,7 +722,7 @@ export function AdminChatInbox({
                       <strong className="font-medium text-espresso">Konteks asal:</strong>{" "}
                       {CHAT_SOURCE_LABELS[selectedThread.source]}
                       {selectedThread.context.orderCode
-                        ? ` · Kode ${selectedThread.context.orderCode} (belum ditemukan di daftar pesanan lokal)`
+                        ? ` · Kode ${selectedThread.context.orderCode}${selectedThread.context.orderVerified ? " (terverifikasi)" : ""}`
                         : ""}
                       {selectedThread.context.designTitle
                         ? ` · Desain "${selectedThread.context.designTitle}"`
@@ -612,18 +744,18 @@ export function AdminChatInbox({
 
               {/* Composer Balasan Admin */}
               <ChatComposer
-                attachments={replyAttachments}
+                attachments={composerAttachments}
                 draftText={replyText}
                 errorMessage={replyError}
                 inputAriaLabel="Tulis balasan admin untuk pelanggan"
-                onAddAttachments={(files) =>
-                  setReplyAttachments((prev) => [...prev, ...files])
-                }
-                onChangeText={setReplyText}
-                onRemoveAttachment={(id) =>
-                  setReplyAttachments((prev) => prev.filter((item) => item.id !== id))
-                }
-                onSend={handleSendReply}
+                isSending={isSending}
+                onAddRawFiles={handleAddRawFiles}
+                onChangeText={(value) => {
+                  setReplyText(value);
+                  pendingClientMsgIdRef.current = null;
+                }}
+                onRemoveAttachment={handleRemovePendingUpload}
+                onSend={() => void handleSendReply()}
                 onSetError={setReplyError}
                 placeholder={`Balas sebagai ${chatConfig.adminDisplayName}...`}
                 submitLabel="Kirim Balasan"

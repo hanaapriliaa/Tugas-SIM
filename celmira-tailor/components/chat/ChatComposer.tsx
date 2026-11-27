@@ -5,6 +5,7 @@ import { formatFileSize, processChatImageFiles } from "@/lib/attachments";
 import {
   MAX_CHAT_IMAGES_PER_MESSAGE,
   MAX_CHAT_MESSAGE_LENGTH,
+  validateChatImageFile,
 } from "@/lib/chat";
 import { CloseIcon, ImageIcon, SendIcon } from "@/components/ui/icons";
 import type { ChatMessageAttachment } from "@/lib/types/tailor";
@@ -17,8 +18,10 @@ type ChatComposerProps = {
   submitLabel?: string;
   inputAriaLabel?: string;
   uploadInputId?: string;
+  isSending?: boolean;
   onChangeText: (value: string) => void;
-  onAddAttachments: (files: ChatMessageAttachment[]) => void;
+  onAddAttachments?: (files: ChatMessageAttachment[]) => void;
+  onAddRawFiles?: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
   onSetError: (message: string | null) => void;
   onSend: () => void;
@@ -32,37 +35,65 @@ export function ChatComposer({
   submitLabel = "Kirim",
   inputAriaLabel = "Tulis pesan untuk tim Celmira",
   uploadInputId = "chat-image-upload",
+  isSending = false,
   onChangeText,
   onAddAttachments,
+  onAddRawFiles,
   onRemoveAttachment,
   onSetError,
   onSend,
 }: ChatComposerProps) {
   async function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
     onSetError(null);
-    const result = await processChatImageFiles(event.target.files, attachments.length);
+    const fileList = event.target.files;
+
+    if (onAddRawFiles) {
+      if (!fileList || fileList.length === 0) return;
+      const remaining = MAX_CHAT_IMAGES_PER_MESSAGE - attachments.length;
+      if (remaining <= 0) {
+        onSetError(`Maksimal ${MAX_CHAT_IMAGES_PER_MESSAGE} gambar referensi dalam satu pesan.`);
+        event.target.value = "";
+        return;
+      }
+      const validFiles: File[] = [];
+      let firstError: string | null = null;
+      for (const file of Array.from(fileList).slice(0, remaining)) {
+        const err = validateChatImageFile(file);
+        if (err) {
+          firstError = firstError ?? err;
+          continue;
+        }
+        validFiles.push(file);
+      }
+      event.target.value = "";
+      if (firstError) onSetError(firstError);
+      if (validFiles.length > 0) onAddRawFiles(validFiles);
+      return;
+    }
+
+    const result = await processChatImageFiles(fileList, attachments.length);
     event.target.value = "";
     if (result.error) {
       onSetError(result.error);
     }
     if (result.attachments.length > 0) {
-      onAddAttachments(result.attachments);
+      onAddAttachments?.(result.attachments);
     }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSend();
+      if (!isSending) onSend();
     }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSend();
+    if (!isSending) onSend();
   }
 
-  const canSend = draftText.trim().length > 0 || attachments.length > 0;
+  const canSend = !isSending && (draftText.trim().length > 0 || attachments.length > 0);
 
   return (
     <form className="border-t border-cocoa/12 bg-ivory px-4 py-3.5 sm:px-6" onSubmit={handleSubmit}>
@@ -73,11 +104,11 @@ export function ChatComposer({
               className="flex items-center gap-2 rounded-xl border border-cocoa/18 bg-cream/55 p-1.5 pr-2.5"
               key={file.id}
             >
-              {file.previewDataUrl ? (
+              {file.url || file.previewDataUrl ? (
                 <img
                   alt={file.name}
                   className="h-10 w-10 rounded-lg object-cover"
-                  src={file.previewDataUrl}
+                  src={file.url ?? file.previewDataUrl}
                 />
               ) : (
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-ivory text-cocoa">
@@ -154,7 +185,7 @@ export function ChatComposer({
           disabled={!canSend}
           type="submit"
         >
-          <span className="hidden sm:inline">{submitLabel}</span>
+          <span className="hidden sm:inline">{isSending ? "Mengirim..." : submitLabel}</span>
           <SendIcon className="h-4 w-4" />
         </button>
       </div>

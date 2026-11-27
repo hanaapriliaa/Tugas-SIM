@@ -12,9 +12,9 @@
 | Design Studio | `/design-studio` | Selesai (lokal) | Pratinjau siluet interaktif, konfigurasi bahan/warna/detail, simpan lokal & konsultasi chat |
 | Measurement Studio | `/measurement-studio` | Selesai (lokal) | Mannequin SVG 2D adaptif 5 template, slider/angka/+/-, validasi cm, profil tersimpan & konsultasi chat |
 | Lacak & Daftar Pesanan | `/track` | Selesai (lokal) | Verifikasi akses 2 faktor, timeline 10 tahap produksi, persetujuan penawaran, Invoice DP 50% (batas 24 jam + proteksi unggah bukti), Invoice Pelunasan (ongkir terpisah) & tautan chat pesanan |
-| Chat Pelanggan | `/chat` | Selesai (Tahap 5A, lokal) | Floating chat terhubung store (sembunyi di `/chat`), daftar percakapan, ruang chat + status admin, waktu & indikator terkirim/terbaca, upload gambar terkompresi, konteks lintas halaman & proteksi privasi pesanan |
-| Admin Dashboard | `/admin` | Tahap 5B-1 (lokal) | Tab Pesanan & Invoice (penawaran, QRIS resmi, verifikasi manual DP/pelunasan, kontrol 10 tahap produksi, resi) + Tab Admin Chat Inbox (daftar inbox, filter Semua/Belum Dibaca/Aktif, pencarian nama/pesan/kode pesanan, riwayat, balasan admin & lampiran gambar, pengaturan identitas/status chat); autentikasi & manajemen template menyusul |
-| Backend & PostgreSQL | `/api/*` | Belum terintegrasi | Masih menggunakan penyimpanan browser lokal sementara |
+| Chat Pelanggan | `/chat` | Selesai (Tahap 5B-2, backend) | Backend Cloudflare Workers + D1 + R2 + Durable Objects WebSocket real-time (+ fallback polling), sesi cookie `HttpOnly`, upload gambar biner ke R2, deduplikasi `clientMessageId`, & migrasi `localStorage` aman |
+| Admin Dashboard | `/admin` | Tahap 5B-2 (auth + chat backend) | Autentikasi server-side PBKDF2 (`HttpOnly` cookie), Tab Pesanan & Invoice (penawaran, QRIS resmi, verifikasi manual DP/pelunasan, kontrol 10 tahap produksi, resi) + Tab Admin Chat Inbox real-time lintas perangkat |
+| Backend & Storage | `/api/*` | Aktif untuk Chat & Auth Admin | Cloudflare D1 (`migrations/0001_chat_backend.sql`), R2 private attachments (`/api/chat/attachments/[id]`), Durable Object `ChatRealtimeHub` (`/api/chat/ws`); modul pesanan/produksi menyusul di Tahap 6 |
 
 ## Riwayat Checkpoint
 - `d9fbde3` — Fondasi proyek vinext/Tailwind v4, design system, layout, dan homepage responsif.
@@ -23,4 +23,5 @@
 - `cb0bdbf` — Implementasi Measurement Studio (`/measurement-studio`) dengan mannequin SVG 2D, 5 template kategori, validasi cm, dan integrasi booking flow.
 - `59fa7df` — Implementasi Order Tracking (`/track`), sistem Invoice DP 50% & Pelunasan (ongkir terpisah), aturan verifikasi manual & proteksi tenggat 24 jam, serta panel pengelolaan pesanan Admin (`/admin`).
 - `dffa793` — Implementasi Tahap 5A: Customer Chat (`/chat`), Floating Chat interaktif, upload gambar referensi, konteks lintas halaman & proteksi privasi order context.
-- *(Lokal, belum di-commit)* — Implementasi Stage 5B-1: Admin Chat Inbox (`/admin` tab `Chat Pelanggan`), balasan admin + gambar referensi, sinkronisasi status `Terkirim` ↔ `Terbaca` pada `localStorage` browser lokal.
+- `f3f4e03` — Implementasi Stage 5B-1: Admin Chat Inbox (`/admin` tab `Chat Pelanggan`), balasan admin + gambar referensi, sinkronisasi status `Terkirim` ↔ `Terbaca` pada `localStorage` browser lokal.
+- *(Lokal, Stage 5B-2)* — Backend Chat & Real-Time lintas perangkat (Cloudflare Workers + D1 + R2 private attachments + Durable Object WebSocket Hibernation + fallback polling + autentikasi admin PBKDF2 `HttpOnly` + sesi customer aman + migrasi `localStorage` idempotent).

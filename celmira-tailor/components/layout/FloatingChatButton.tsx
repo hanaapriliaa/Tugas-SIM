@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowUpRight,
   ChatIcon,
@@ -13,22 +13,21 @@ import {
 } from "@/components/ui/icons";
 import {
   MAX_CHAT_MESSAGE_LENGTH,
-  appendCustomerMessage,
   buildChatHref,
   buildOfficialWhatsappHref,
-  createChatThread,
   createDefaultAdminChatConfig,
   findMatchingContextThread,
   formatChatTime,
   getTotalUnreadForCustomer,
 } from "@/lib/chat";
-import { site } from "@/lib/site";
 import {
-  CHAT_UPDATED_EVENT,
-  loadAdminChatConfig,
-  loadChatThreads,
-  upsertChatThread,
-} from "@/lib/storage/tailor-store";
+  createCustomerThreadApi,
+  fetchCustomerThreads,
+  generateClientMessageId,
+  sendCustomerMessageApi,
+} from "@/lib/chat-client";
+import { startChatRealtime } from "@/lib/chat-realtime";
+import { site } from "@/lib/site";
 import type {
   AdminChatConfig,
   ChatThread,
@@ -45,7 +44,7 @@ function resolveRouteSource(pathname: string): ChatThreadSource {
 
 /**
  * Tombol chat mengambang untuk seluruh halaman pelanggan (otomatis tersembunyi di /chat).
- * Terhubung ke chat store lokal, menampilkan pratinjau cepat, dan menyediakan kirim cepat.
+ * Terhubung ke backend Cloudflare D1 + Durable Object WebSocket secara real-time.
  */
 export function FloatingChatButton() {
   const pathname = usePathname();
@@ -54,26 +53,43 @@ export function FloatingChatButton() {
   const [chatConfig, setChatConfig] = useState<AdminChatConfig>(createDefaultAdminChatConfig);
   const [quickText, setQuickText] = useState("");
   const [quickError, setQuickError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const pendingClientMsgIdRef = useRef<string | null>(null);
 
   const isChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
   const routeSource = resolveRouteSource(pathname);
 
-  useEffect(() => {
-    const sync = () => {
-      setThreads(loadChatThreads());
-      setChatConfig(loadAdminChatConfig());
-    };
-    sync();
-
-    window.addEventListener("storage", sync);
-    window.addEventListener(CHAT_UPDATED_EVENT, sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(CHAT_UPDATED_EVENT, sync);
-    };
+  const refreshFromServer = useCallback(async () => {
+    try {
+      const data = await fetchCustomerThreads();
+      setThreads(data.threads);
+      setChatConfig(data.config);
+      setSessionReady(true);
+    } catch {
+      // Abaikan kegagalan sementara jaringan agar UI tetap responsif.
+    }
   }, []);
+
+  useEffect(() => {
+    if (isChatRoute || isAdminRoute) return;
+    void refreshFromServer();
+  }, [isChatRoute, isAdminRoute, refreshFromServer]);
+
+  useEffect(() => {
+    if (isChatRoute || isAdminRoute || !sessionReady) return;
+    return startChatRealtime({
+      role: "customer",
+      enabled: true,
+      onEvent: () => {
+        void refreshFromServer();
+      },
+      onSyncNeeded: refreshFromServer,
+    });
+  }, [isChatRoute, isAdminRoute, sessionReady, refreshFromServer]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -112,34 +128,48 @@ export function FloatingChatButton() {
   const fullChatHref = buildChatHref({ source: routeSource });
   const officialWhatsappHref = buildOfficialWhatsappHref(chatConfig.officialWhatsappNumber);
 
-  if (isChatRoute) {
+  if (isChatRoute || isAdminRoute) {
     return null;
   }
 
-  function handleQuickSend(event: FormEvent<HTMLFormElement>) {
+  async function handleQuickSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (sending) return;
     setQuickError(null);
 
-    const targetThread =
-      activePreviewThread ??
-      createChatThread({
-        context: { source: routeSource },
-      });
-
-    const result = appendCustomerMessage(targetThread, {
-      body: quickText,
-      attachments: [],
-      senderName: "Anda",
-    });
-
-    if (!result.ok) {
-      setQuickError(result.error);
+    const trimmed = quickText.trim();
+    if (!trimmed) {
+      setQuickError("Tulis pesan singkat terlebih dahulu.");
       return;
     }
 
-    const next = upsertChatThread(result.thread);
-    setThreads(next);
-    setQuickText("");
+    setSending(true);
+    try {
+      let threadId = activePreviewThread?.id;
+      if (!threadId) {
+        const created = await createCustomerThreadApi({
+          context: { source: routeSource },
+        });
+        threadId = created.thread.id;
+      }
+
+      const clientMessageId = pendingClientMsgIdRef.current ?? generateClientMessageId();
+      pendingClientMsgIdRef.current = clientMessageId;
+
+      await sendCustomerMessageApi(threadId, {
+        body: trimmed,
+        senderName: "Anda",
+        clientMessageId,
+      });
+
+      pendingClientMsgIdRef.current = null;
+      setQuickText("");
+      await refreshFromServer();
+    } catch (err) {
+      setQuickError(err instanceof Error ? err.message : "Gagal mengirim pesan. Coba lagi.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -239,8 +269,12 @@ export function FloatingChatButton() {
             <input
               aria-label="Tulis pesan cepat"
               className="min-w-0 flex-1 rounded-full border border-cocoa/25 bg-ivory px-3.5 py-2 text-xs text-espresso placeholder:text-muted/65 focus:border-espresso focus:outline-none"
+              disabled={sending}
               maxLength={MAX_CHAT_MESSAGE_LENGTH}
-              onChange={(e) => setQuickText(e.target.value)}
+              onChange={(e) => {
+                setQuickText(e.target.value);
+                pendingClientMsgIdRef.current = null;
+              }}
               placeholder="Tulis pesan singkat..."
               type="text"
               value={quickText}
@@ -248,7 +282,7 @@ export function FloatingChatButton() {
             <button
               aria-label="Kirim pesan cepat"
               className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-espresso text-ivory transition-colors hover:bg-cocoa disabled:cursor-not-allowed disabled:bg-sand disabled:text-muted"
-              disabled={!quickText.trim()}
+              disabled={sending || !quickText.trim()}
               type="submit"
             >
               <SendIcon className="h-3.5 w-3.5" />

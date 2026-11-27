@@ -1,0 +1,7 @@
+# Salin file ini menjadi .dev.vars untuk pengembangan lokal (jangan commit .dev.vars ke Git).
+# Buat hash password admin dengan menjalankan:
+#   node scripts/hash-admin-password.mjs "PasswordKuatAnda"
+
+ADMIN_EMAIL=admin@celmira.local
+ADMIN_PASSWORD_HASH=
+AUTH_SIGNING_SECRET=

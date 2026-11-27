@@ -371,12 +371,14 @@ export type ChatMessageAttachment = {
   name: string;
   size: number;
   mimeType: string;
+  url?: string;
   previewDataUrl?: string;
 };
 
 export type ChatThreadContext = {
   source: ChatThreadSource;
   orderCode?: string;
+  orderVerified?: boolean;
   categoryId?: GarmentCategoryId;
   designId?: string;
   designTitle?: string;
@@ -388,6 +390,7 @@ export type ChatThreadContext = {
 export type ChatMessage = {
   id: string;
   threadId: string;
+  clientMessageId?: string;
   sender: ChatMessageSender;
   senderName: string;
   body: string;
@@ -396,6 +399,8 @@ export type ChatMessage = {
   status: ChatMessageStatus;
   readAt?: string;
 };
+
+export type ChatConnectionStatus = "connecting" | "realtime" | "polling" | "reconnecting" | "offline";
 
 export type ChatThread = {
   id: string;

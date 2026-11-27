@@ -1,46 +1,46 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatContextBanner } from "@/components/chat/ChatContextBanner";
 import { ChatEmptyState } from "@/components/chat/ChatEmptyState";
 import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { ChatThreadList } from "@/components/chat/ChatThreadList";
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  CloseIcon,
-} from "@/components/ui/icons";
+import { ArrowLeft, ArrowUpRight, CloseIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
 import {
-  appendCustomerMessage,
   buildOfficialWhatsappHref,
-  createChatThread,
   createDefaultAdminChatConfig,
   filterChatThreads,
   findMatchingContextThread,
-  markThreadReadByCustomer,
   parseChatQueryParams,
   sanitizeOrderCodeParam,
-  upsertChatThreadInList,
 } from "@/lib/chat";
+import {
+  createCustomerThreadApi,
+  fetchCustomerThreads,
+  generateClientMessageId,
+  getLocalMigrationInfo,
+  markCustomerThreadReadApi,
+  migrateLocalChatToBackend,
+  sendCustomerMessageApi,
+  uploadChatAttachmentApi,
+  type MigrationSummary,
+} from "@/lib/chat-client";
+import { startChatRealtime } from "@/lib/chat-realtime";
 import { verifyOrderTrackingAccess } from "@/lib/order-tracking";
 import { site } from "@/lib/site";
 import {
-  CHAT_UPDATED_EVENT,
   isOrderVerifiedInSession,
-  loadAdminChatConfig,
-  loadChatThreads,
   loadMeasurementProfiles,
   loadSavedDesigns,
   loadSubmittedOrders,
   markOrderVerifiedInSession,
-  saveChatThreads,
-  upsertChatThread,
 } from "@/lib/storage/tailor-store";
 import type {
   AdminChatConfig,
+  ChatConnectionStatus,
   ChatMessageAttachment,
   ChatThread,
   ChatThreadContext,
@@ -49,6 +49,20 @@ import type {
   SubmittedOrder,
 } from "@/lib/types/tailor";
 
+type PendingUpload = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
+const CONNECTION_LABELS: Record<ChatConnectionStatus, string> = {
+  connecting: "Menyambungkan...",
+  realtime: "Real-time aktif",
+  polling: "Sinkronisasi berkala",
+  reconnecting: "Menyambung ulang...",
+  offline: "Koneksi terputus",
+};
+
 export function CustomerChatWorkspace() {
   const searchParams = useSearchParams();
 
@@ -56,6 +70,8 @@ export function CustomerChatWorkspace() {
   const [orders, setOrders] = useState<SubmittedOrder[]>([]);
   const [chatConfig, setChatConfig] = useState<AdminChatConfig>(createDefaultAdminChatConfig);
   const [hydrated, setHydrated] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ChatConnectionStatus>("connecting");
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pendingContext, setPendingContext] = useState<ChatThreadContext | null>(null);
@@ -65,10 +81,17 @@ export function CustomerChatWorkspace() {
   const [sourceFilter, setSourceFilter] = useState<ChatThreadSource | "all">("all");
 
   const [draftText, setDraftText] = useState("");
-  const [draftAttachments, setDraftAttachments] = useState<ChatMessageAttachment[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const [verifiedSessionTick, setVerifiedSessionTick] = useState(0);
+
+  // Migrasi localStorage non-destruktif
+  const [legacyInfo, setLegacyInfo] = useState(() => getLocalMigrationInfo());
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationFeedback, setMigrationFeedback] = useState<string | null>(null);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
 
   // Modal buat konsultasi baru
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -77,79 +100,124 @@ export function CustomerChatWorkspace() {
   const [newOrderCode, setNewOrderCode] = useState("");
   const [newCategoryId, setNewCategoryId] = useState<GarmentCategoryId | "">("");
 
+  const activeThreadIdRef = useRef<string | null>(null);
+  const pendingClientMsgIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    const syncAll = () => {
-      setThreads(loadChatThreads());
-      setOrders(loadSubmittedOrders());
-      setChatConfig(loadAdminChatConfig());
-    };
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
 
-    const initialThreads = loadChatThreads();
-    const initialOrders = loadSubmittedOrders();
-    const designs = loadSavedDesigns();
-    const profiles = loadMeasurementProfiles();
-    setThreads(initialThreads);
-    setOrders(initialOrders);
-    setChatConfig(loadAdminChatConfig());
+  const syncFromServer = useCallback(async () => {
+    try {
+      const data = await fetchCustomerThreads();
+      setThreads(data.threads);
+      setChatConfig(data.config);
+      setSessionReady(true);
 
-    const queryContext = parseChatQueryParams(searchParams);
-    const hasQueryContext =
-      queryContext.source !== "general" ||
-      Boolean(queryContext.orderCode) ||
-      Boolean(queryContext.categoryId) ||
-      Boolean(queryContext.designId) ||
-      Boolean(queryContext.measurementProfileId) ||
-      Boolean(queryContext.templateId);
-
-    if (hasQueryContext) {
-      const matchedDesign = queryContext.designId
-        ? designs.find((item) => item.id === queryContext.designId)
-        : undefined;
-      const matchedProfile = queryContext.measurementProfileId
-        ? profiles.find((item) => item.id === queryContext.measurementProfileId)
-        : undefined;
-
-      const enrichedContext: ChatThreadContext = {
-        ...queryContext,
-        categoryId: queryContext.categoryId ?? matchedDesign?.categoryId ?? matchedProfile?.categoryHint,
-        designTitle: matchedDesign?.title,
-        measurementLabel: matchedProfile?.label,
-      };
-
-      const existingMatch = findMatchingContextThread(initialThreads, enrichedContext);
-      if (existingMatch) {
-        const readThread = markThreadReadByCustomer(existingMatch);
-        if (readThread !== existingMatch) {
-          saveChatThreads(upsertChatThreadInList(initialThreads, readThread));
-          setThreads(loadChatThreads());
+      const openId = activeThreadIdRef.current;
+      if (openId) {
+        const current = data.threads.find((t) => t.id === openId);
+        if (current && current.unreadByCustomer > 0) {
+          const readRes = await markCustomerThreadReadApi(openId);
+          setThreads((prev) => prev.map((t) => (t.id === openId ? readRes.thread : t)));
         }
-        setActiveThreadId(existingMatch.id);
-        setPendingContext(null);
-      } else {
-        setPendingContext(enrichedContext);
-        setActiveThreadId(null);
       }
-      setMobileView("thread");
-    } else if (initialThreads.length > 0) {
-      const first = initialThreads[0];
-      const readThread = markThreadReadByCustomer(first);
-      if (readThread !== first) {
-        saveChatThreads(upsertChatThreadInList(initialThreads, readThread));
-        setThreads(loadChatThreads());
+      return data.threads;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function bootstrap() {
+      const initialOrders = loadSubmittedOrders();
+      const designs = loadSavedDesigns();
+      const profiles = loadMeasurementProfiles();
+      if (!active) return;
+
+      setOrders(initialOrders);
+      setLegacyInfo(getLocalMigrationInfo());
+
+      const loadedThreads = (await syncFromServer()) ?? [];
+      if (!active) return;
+
+      const queryContext = parseChatQueryParams(searchParams);
+      const hasQueryContext =
+        queryContext.source !== "general" ||
+        Boolean(queryContext.orderCode) ||
+        Boolean(queryContext.categoryId) ||
+        Boolean(queryContext.designId) ||
+        Boolean(queryContext.measurementProfileId) ||
+        Boolean(queryContext.templateId);
+
+      if (hasQueryContext) {
+        const matchedDesign = queryContext.designId
+          ? designs.find((item) => item.id === queryContext.designId)
+          : undefined;
+        const matchedProfile = queryContext.measurementProfileId
+          ? profiles.find((item) => item.id === queryContext.measurementProfileId)
+          : undefined;
+
+        const enrichedContext: ChatThreadContext = {
+          ...queryContext,
+          orderVerified: isOrderVerifiedInSession(queryContext.orderCode),
+          categoryId:
+            queryContext.categoryId ?? matchedDesign?.categoryId ?? matchedProfile?.categoryHint,
+          designTitle: matchedDesign?.title,
+          measurementLabel: matchedProfile?.label,
+        };
+
+        const existingMatch = findMatchingContextThread(loadedThreads, enrichedContext);
+        if (existingMatch) {
+          setActiveThreadId(existingMatch.id);
+          setPendingContext(null);
+          if (existingMatch.unreadByCustomer > 0) {
+            void markCustomerThreadReadApi(existingMatch.id).then((res) => {
+              if (!active) return;
+              setThreads((prev) =>
+                prev.map((t) => (t.id === existingMatch.id ? res.thread : t))
+              );
+            });
+          }
+        } else {
+          setPendingContext(enrichedContext);
+          setActiveThreadId(null);
+        }
+        setMobileView("thread");
+      } else if (loadedThreads.length > 0) {
+        const first = loadedThreads[0];
+        setActiveThreadId(first.id);
+        if (first.unreadByCustomer > 0) {
+          void markCustomerThreadReadApi(first.id).then((res) => {
+            if (!active) return;
+            setThreads((prev) => prev.map((t) => (t.id === first.id ? res.thread : t)));
+          });
+        }
       }
-      setActiveThreadId(first.id);
+
+      setHydrated(true);
     }
 
-    setHydrated(true);
-
-    const onUpdate = () => syncAll();
-    window.addEventListener("storage", onUpdate);
-    window.addEventListener(CHAT_UPDATED_EVENT, onUpdate);
+    void bootstrap();
     return () => {
-      window.removeEventListener("storage", onUpdate);
-      window.removeEventListener(CHAT_UPDATED_EVENT, onUpdate);
+      active = false;
     };
-  }, [searchParams]);
+  }, [searchParams, syncFromServer]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    return startChatRealtime({
+      role: "customer",
+      enabled: true,
+      onStatusChange: setConnectionStatus,
+      onEvent: () => {
+        void syncFromServer();
+      },
+      onSyncNeeded: syncFromServer,
+    });
+  }, [sessionReady, syncFromServer]);
 
   const filteredThreads = useMemo(
     () => filterChatThreads(threads, searchQuery, sourceFilter),
@@ -171,8 +239,11 @@ export function CustomerChatWorkspace() {
 
   const isOrderVerified = useMemo(() => {
     void verifiedSessionTick;
-    return isOrderVerifiedInSession(effectiveContext.orderCode);
-  }, [effectiveContext.orderCode, verifiedSessionTick]);
+    return (
+      Boolean(effectiveContext.orderVerified) ||
+      isOrderVerifiedInSession(effectiveContext.orderCode)
+    );
+  }, [effectiveContext.orderCode, effectiveContext.orderVerified, verifiedSessionTick]);
 
   const officialWhatsappHref = useMemo(() => {
     const contextText = effectiveContext.orderCode
@@ -181,19 +252,33 @@ export function CustomerChatWorkspace() {
     return buildOfficialWhatsappHref(chatConfig.officialWhatsappNumber, contextText);
   }, [chatConfig.officialWhatsappNumber, effectiveContext.orderCode]);
 
-  function handleSelectThread(threadId: string) {
-    const target = threads.find((item) => item.id === threadId);
-    if (!target) return;
+  const composerAttachments: ChatMessageAttachment[] = useMemo(
+    () =>
+      pendingUploads.map((item) => ({
+        id: item.id,
+        name: item.file.name,
+        size: item.file.size,
+        mimeType: item.file.type,
+        previewDataUrl: item.previewUrl,
+      })),
+    [pendingUploads]
+  );
 
-    const marked = markThreadReadByCustomer(target);
-    if (marked !== target) {
-      upsertChatThread(marked);
-      setThreads(loadChatThreads());
-    }
+  async function handleSelectThread(threadId: string) {
     setActiveThreadId(threadId);
     setPendingContext(null);
     setComposerError(null);
     setMobileView("thread");
+
+    const target = threads.find((item) => item.id === threadId);
+    if (target && target.unreadByCustomer > 0) {
+      try {
+        const res = await markCustomerThreadReadApi(threadId);
+        setThreads((prev) => prev.map((t) => (t.id === threadId ? res.thread : t)));
+      } catch {
+        // Akan disinkronkan saat refresh berikutnya
+      }
+    }
   }
 
   function handleVerifyOrderFromBanner(orderCode: string, verifier: string) {
@@ -206,37 +291,87 @@ export function CustomerChatWorkspace() {
     return { ok: true };
   }
 
-  function handleSend() {
+  function handleAddRawFiles(files: File[]) {
+    const created: PendingUpload[] = files.map((file) => ({
+      id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setPendingUploads((prev) => [...prev, ...created]);
+    pendingClientMsgIdRef.current = null;
+  }
+
+  function handleRemovePendingUpload(id: string) {
+    setPendingUploads((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((item) => item.id !== id);
+    });
+  }
+
+  async function handleSend() {
+    if (isSending) return;
     setComposerError(null);
 
-    let targetThread = activeThread;
-    if (!targetThread) {
-      targetThread = createChatThread({
-        context: pendingContext ?? { source: "general" },
-      });
-    }
-
-    const result = appendCustomerMessage(targetThread, {
-      body: draftText,
-      attachments: draftAttachments,
-      senderName: "Anda",
-    });
-
-    if (!result.ok) {
-      setComposerError(result.error);
+    if (!draftText.trim() && pendingUploads.length === 0) {
+      setComposerError("Tulis pesan atau lampirkan minimal 1 gambar referensi sebelum mengirim.");
       return;
     }
 
-    const nextThreads = upsertChatThread(result.thread);
-    setThreads(nextThreads);
-    setActiveThreadId(result.thread.id);
-    setPendingContext(null);
-    setDraftText("");
-    setDraftAttachments([]);
-    setMobileView("thread");
+    setIsSending(true);
+    try {
+      let threadId = activeThread?.id;
+      if (!threadId) {
+        const ctx: ChatThreadContext = {
+          ...(pendingContext ?? { source: "general" }),
+          orderVerified: isOrderVerified,
+        };
+        const created = await createCustomerThreadApi({
+          context: ctx,
+          customerName: matchedOrder?.customer.fullName,
+        });
+        threadId = created.thread.id;
+        setActiveThreadId(threadId);
+        setPendingContext(null);
+      }
+
+      const uploadedIds: string[] = [];
+      for (const item of pendingUploads) {
+        const uploaded = await uploadChatAttachmentApi(threadId, item.file, "customer");
+        uploadedIds.push(uploaded.id);
+      }
+
+      const clientMessageId = pendingClientMsgIdRef.current ?? generateClientMessageId();
+      pendingClientMsgIdRef.current = clientMessageId;
+
+      const sent = await sendCustomerMessageApi(threadId, {
+        body: draftText,
+        senderName: matchedOrder?.customer.fullName || "Anda",
+        clientMessageId,
+        attachmentIds: uploadedIds,
+      });
+
+      pendingClientMsgIdRef.current = null;
+      for (const item of pendingUploads) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+      setPendingUploads([]);
+      setDraftText("");
+      setActiveThreadId(sent.thread.id);
+      setThreads((prev) => [sent.thread, ...prev.filter((t) => t.id !== sent.thread.id)]);
+      setMobileView("thread");
+    } catch (err) {
+      setComposerError(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengirim pesan ke server. Tekan Kirim lagi untuk mencoba ulang tanpa duplikasi."
+      );
+    } finally {
+      setIsSending(false);
+    }
   }
 
-  function handleCreateNewConsultation(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateNewConsultation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const safeOrderCode =
       newTopicSource === "track" ? sanitizeOrderCodeParam(newOrderCode) : undefined;
@@ -244,29 +379,53 @@ export function CustomerChatWorkspace() {
     const context: ChatThreadContext = {
       source: newTopicSource,
       orderCode: safeOrderCode,
+      orderVerified: isOrderVerifiedInSession(safeOrderCode),
       categoryId: newCategoryId || undefined,
     };
 
     const existing = findMatchingContextThread(threads, context);
     if (existing && (safeOrderCode || newTopicTitle.trim() === "")) {
-      handleSelectThread(existing.id);
+      await handleSelectThread(existing.id);
       setIsNewModalOpen(false);
       return;
     }
 
-    const created = createChatThread({
-      title: newTopicTitle.trim() || undefined,
-      context,
-    });
-    const next = upsertChatThread(created);
-    setThreads(next);
-    setActiveThreadId(created.id);
-    setPendingContext(null);
-    setNewTopicTitle("");
-    setNewOrderCode("");
-    setNewCategoryId("");
-    setIsNewModalOpen(false);
-    setMobileView("thread");
+    try {
+      const { thread } = await createCustomerThreadApi({
+        title: newTopicTitle.trim() || undefined,
+        context,
+      });
+      setThreads((prev) => [thread, ...prev.filter((t) => t.id !== thread.id)]);
+      setActiveThreadId(thread.id);
+      setPendingContext(null);
+      setNewTopicTitle("");
+      setNewOrderCode("");
+      setNewCategoryId("");
+      setIsNewModalOpen(false);
+      setMobileView("thread");
+    } catch (err) {
+      setComposerError(err instanceof Error ? err.message : "Gagal membuat percakapan baru.");
+    }
+  }
+
+  async function handleMigrateLegacy() {
+    setIsMigrating(true);
+    setMigrationError(null);
+    setMigrationFeedback(null);
+    try {
+      const summary: MigrationSummary = await migrateLocalChatToBackend();
+      setLegacyInfo(getLocalMigrationInfo());
+      setMigrationFeedback(
+        `Migrasi terverifikasi: ${summary.migratedThreads} percakapan baru (${summary.skippedThreads} sudah ada), ${summary.migratedMessages} pesan baru (${summary.skippedMessages} dilewati duplikat), ${summary.uploadedAttachments} gambar diunggah ke R2. Arsip lokal tetap dipertahankan.`
+      );
+      await syncFromServer();
+    } catch (err) {
+      setMigrationError(
+        err instanceof Error ? err.message : "Migrasi data lokal gagal. Data lokal Anda tetap aman."
+      );
+    } finally {
+      setIsMigrating(false);
+    }
   }
 
   function openNewModal(defaultSource: ChatThreadSource = "general") {
@@ -281,22 +440,31 @@ export function CustomerChatWorkspace() {
       {/* Header Halaman Chat */}
       <div className="flex flex-col gap-4 pb-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex max-w-2xl flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <p className="eyebrow">Ruang Konsultasi</p>
-            <span className="rounded-full border border-cocoa/25 px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.16em] text-cocoa">
-              Tahap 5A · Chat Pelanggan
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-cocoa/25 bg-cream/70 px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-cocoa">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  connectionStatus === "realtime"
+                    ? "bg-emerald-700"
+                    : connectionStatus === "offline"
+                      ? "bg-rose"
+                      : "bg-cocoa"
+                }`}
+              />
+              {CONNECTION_LABELS[connectionStatus]}
             </span>
           </div>
           <h1 className="text-balance text-[2.1rem] leading-[1.1] text-espresso sm:text-[2.75rem]">
             Diskusi desain, ukuran, dan pesanan Anda.
           </h1>
           <p className="text-sm leading-relaxed text-muted sm:text-[0.95rem]">
-            Sampaikan pertanyaan atau lampirkan foto referensi busana. Seluruh percakapan tersimpan
-            di perangkat ini hingga integrasi backend tersedia.
+            Sampaikan pertanyaan atau lampirkan foto referensi busana. Percakapan tersimpan aman di
+            server dan tersinkron langsung dengan Admin Chat Inbox Celmira Tailor.
           </p>
         </div>
 
-        {/* Status Alternatif WhatsApp Resmi (Jujur) */}
+        {/* Status Alternatif WhatsApp Resmi */}
         <div className="rounded-2xl border border-cocoa/15 bg-cream/55 px-4 py-3 text-xs leading-relaxed">
           {officialWhatsappHref ? (
             <div className="flex flex-wrap items-center gap-3">
@@ -328,16 +496,58 @@ export function CustomerChatWorkspace() {
         </div>
       </div>
 
+      {/* Banner Migrasi Data localStorage Lama (Non-Destruktif) */}
+      {legacyInfo.legacyThreadCount > 0 && !legacyInfo.alreadyVerified ? (
+        <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-cocoa/20 bg-cream/70 p-4 text-xs leading-relaxed sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-muted">
+            <p className="font-semibold text-espresso">
+              Ditemukan {legacyInfo.legacyThreadCount} percakapan lokal ({legacyInfo.legacyMessageCount}{" "}
+              pesan) dari tahap sebelumnya
+            </p>
+            <p className="mt-0.5">
+              Anda dapat memigrasikannya ke backend server tanpa duplikasi. Arsip lokal tidak akan
+              dihapus otomatis.
+            </p>
+          </div>
+          <button
+            className="w-fit shrink-0 cursor-pointer rounded-full bg-espresso px-4 py-2 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-ivory transition-colors hover:bg-cocoa disabled:opacity-60"
+            disabled={isMigrating}
+            onClick={() => void handleMigrateLegacy()}
+            type="button"
+          >
+            {isMigrating ? "Memigrasikan..." : "Migrasikan ke Server"}
+          </button>
+        </div>
+      ) : null}
+
+      {migrationFeedback ? (
+        <div
+          className="mb-6 rounded-2xl border border-cocoa/25 bg-cream/75 px-4 py-3 text-xs font-medium text-espresso"
+          role="status"
+        >
+          {migrationFeedback}
+        </div>
+      ) : null}
+
+      {migrationError ? (
+        <div
+          className="mb-6 rounded-2xl border border-rose/40 bg-rose/10 px-4 py-3 text-xs font-medium text-espresso"
+          role="alert"
+        >
+          {migrationError}
+        </div>
+      ) : null}
+
       {/* Workspace 2 Kolom (Desktop) / Switchable (Mobile) */}
       <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
         {/* Kolom Kiri: Daftar Percakapan */}
-        <div className={mobileView === "thread" ? "hidden lg:block" : "block"}>
+        <div className={`min-w-0 ${mobileView === "thread" ? "hidden lg:block" : "block"}`}>
           <ChatThreadList
             activeThreadId={activeThreadId}
             onChangeSearch={setSearchQuery}
             onChangeSourceFilter={setSourceFilter}
             onOpenNewThreadModal={() => openNewModal("general")}
-            onSelectThread={handleSelectThread}
+            onSelectThread={(id) => void handleSelectThread(id)}
             searchQuery={searchQuery}
             sourceFilter={sourceFilter}
             threads={filteredThreads}
@@ -347,9 +557,9 @@ export function CustomerChatWorkspace() {
         {/* Kolom Kanan: Ruang Percakapan atau Empty State */}
         <section
           aria-label="Area percakapan pelanggan"
-          className={`flex min-h-[34rem] flex-col overflow-hidden rounded-[1.75rem] border border-cocoa/15 bg-ivory shadow-[0_24px_60px_-48px_rgba(59,43,37,0.4)] ${
-            mobileView === "list" && !showConversationArea ? "hidden lg:flex" : ""
-          } ${mobileView === "list" && showConversationArea ? "hidden lg:flex" : "flex"}`}
+          className={`flex min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-[1.75rem] border border-cocoa/15 bg-ivory shadow-[0_24px_60px_-48px_rgba(59,43,37,0.4)] ${
+            mobileView === "list" ? "hidden lg:flex" : "flex"
+          }`}
         >
           {!hydrated ? (
             <div className="flex flex-1 items-center justify-center p-10">
@@ -404,9 +614,10 @@ export function CustomerChatWorkspace() {
                 context={effectiveContext}
                 isOrderVerified={isOrderVerified}
                 matchedOrder={matchedOrder}
-                onSelectQuickPrompt={(prompt) =>
-                  setDraftText((prev) => (prev.trim() ? `${prev.trim()} ${prompt}` : prompt))
-                }
+                onSelectQuickPrompt={(prompt) => {
+                  setDraftText((prev) => (prev.trim() ? `${prev.trim()} ${prompt}` : prompt));
+                  pendingClientMsgIdRef.current = null;
+                }}
                 onVerifyOrder={handleVerifyOrderFromBanner}
               />
 
@@ -414,39 +625,30 @@ export function CustomerChatWorkspace() {
               <ChatMessageList
                 emptyHint={
                   effectiveContext.orderCode
-                    ? `Siap mengirim pertanyaan untuk pesanan ${effectiveContext.orderCode}. Pesan Anda akan berstatus "Terkirim" dan menunggu balasan admin pada Tahap 5B.`
-                    : undefined
+                    ? `Siap mengirim pertanyaan untuk pesanan ${effectiveContext.orderCode}. Pesan Anda langsung tersimpan di server dan masuk ke Admin Chat Inbox.`
+                    : "Tulis pertanyaan Anda atau lampirkan foto referensi desain di bawah ini. Pesan akan langsung masuk ke tim Celmira."
                 }
                 messages={activeThread?.messages ?? []}
               />
 
-              {/* Input & Upload Gambar */}
+              {/* Input & Upload Gambar ke R2 */}
               <ChatComposer
-                attachments={draftAttachments}
+                attachments={composerAttachments}
                 draftText={draftText}
                 errorMessage={composerError}
-                onAddAttachments={(files) =>
-                  setDraftAttachments((prev) => [...prev, ...files])
-                }
-                onChangeText={setDraftText}
-                onRemoveAttachment={(id) =>
-                  setDraftAttachments((prev) => prev.filter((item) => item.id !== id))
-                }
-                onSend={handleSend}
+                isSending={isSending}
+                onAddRawFiles={handleAddRawFiles}
+                onChangeText={(value) => {
+                  setDraftText(value);
+                  pendingClientMsgIdRef.current = null;
+                }}
+                onRemoveAttachment={handleRemovePendingUpload}
+                onSend={() => void handleSend()}
                 onSetError={setComposerError}
               />
             </>
           )}
         </section>
-      </div>
-
-      {/* Catatan Jujur Penyimpanan Lokal */}
-      <div className="mt-8 rounded-[1.5rem] border border-cocoa/15 bg-cream/40 p-4 text-xs leading-relaxed text-muted sm:p-5">
-        <strong className="font-semibold text-espresso">Catatan Mode Penyimpanan Lokal:</strong>{" "}
-        Percakapan chat pelanggan pada tahap ini disimpan di browser perangkat Anda (
-        <code>localStorage</code>) dan belum tersinkron dengan server, perangkat lain, maupun
-        balasan admin otomatis. Fitur balasan admin di dashboard akan dibangun pada Tahap 5B dan
-        integrasi backend PostgreSQL pada Tahap 6.
       </div>
 
       {/* Modal Mulai Konsultasi Baru */}
