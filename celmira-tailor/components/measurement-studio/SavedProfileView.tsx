@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { MannequinPreview } from "@/components/measurement-studio/MannequinPreview";
-import { AutoSyncStatusBar } from "@/components/studio/AutoSyncStatusBar";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { buildChatHref } from "@/lib/chat";
@@ -13,9 +12,7 @@ import {
   getMeasurementTemplateById,
   summarizeMeasurementProfile,
 } from "@/lib/measurement-studio";
-import type { AutoSyncState, CustomerIdentitySummary } from "@/lib/studio-client";
 import type {
-  DesignStudioSavedConfig,
   MeasurementProfile,
   MeasurementTemplateConfig,
 } from "@/lib/types/tailor";
@@ -24,34 +21,22 @@ type SavedProfileViewProps = {
   profile: MeasurementProfile;
   profiles: MeasurementProfile[];
   templates: MeasurementTemplateConfig[];
-  syncState: AutoSyncState;
-  syncError?: string | null;
-  lastSavedAt?: string | null;
   statusMessage?: string | null;
   onSelectProfile: (profile: MeasurementProfile) => void;
   onCreateNewProfile: () => void;
   onEditProfile: (profile: MeasurementProfile) => void;
   onDeleteProfile: (profile: MeasurementProfile) => void;
-  onAccountSynced: (payload: {
-    customer: CustomerIdentitySummary | null;
-    designs?: DesignStudioSavedConfig[];
-    profiles?: MeasurementProfile[];
-  }) => void;
 };
 
 export function SavedProfileView({
   profile,
   profiles,
   templates,
-  syncState,
-  syncError,
-  lastSavedAt,
   statusMessage,
   onSelectProfile,
   onCreateNewProfile,
   onEditProfile,
   onDeleteProfile,
-  onAccountSynced,
 }: SavedProfileViewProps) {
   const activeTemplate = getMeasurementTemplateById(profile.templateId, templates);
   const measurementRows = summarizeMeasurementProfile(profile, templates);
@@ -60,7 +45,7 @@ export function SavedProfileView({
     <div className="shell pb-16 pt-10 sm:pb-20 sm:pt-14">
       <div className="mx-auto max-w-4xl">
         {/* Header Profil Ukuran Tersimpan */}
-        <div className="flex flex-col gap-4 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-6 flex flex-col gap-4 border-b border-cocoa/12 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <p className="eyebrow">Profil Ukuran Tersimpan</p>
@@ -85,15 +70,6 @@ export function SavedProfileView({
           >
             + Buat Profil Baru
           </button>
-        </div>
-
-        <div className="mb-6">
-          <AutoSyncStatusBar
-            lastSavedAt={lastSavedAt ?? profile.updatedAt}
-            onAccountSynced={onAccountSynced}
-            syncError={syncError}
-            syncState={syncState === "idle" ? "saved" : syncState}
-          />
         </div>
 
         {profiles.length > 1 ? (

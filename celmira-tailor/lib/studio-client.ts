@@ -11,12 +11,6 @@ import type {
   ReferenceAttachment,
 } from "@/lib/types/tailor";
 
-export type CustomerIdentitySummary = {
-  id: string;
-  email: string;
-  fullName: string;
-};
-
 export type AutoSyncState = "idle" | "saving" | "saved" | "error";
 
 export class StudioApiError extends Error {
@@ -51,57 +45,36 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   return data as T;
 }
 
-export async function fetchCustomerAuthApi(): Promise<{
-  authenticated: boolean;
-  customer: CustomerIdentitySummary | null;
+export async function createGuestRecoveryLinkApi(): Promise<{
+  token: string;
+  expiresAt: string;
+  ttlMinutes: number;
 }> {
-  const res = await fetch("/api/customer/auth/me", {
-    method: "GET",
+  const res = await fetch("/api/studio/recovery-links", {
+    method: "POST",
     credentials: "same-origin",
-    cache: "no-store",
   });
   return parseJsonResponse(res);
 }
 
-export async function registerCustomerApi(payload: {
-  email: string;
-  password: string;
-  fullName?: string;
-}): Promise<{
-  customer: CustomerIdentitySummary;
-  designs: DesignStudioSavedConfig[];
-  profiles: MeasurementProfile[];
+export async function revokeGuestRecoveryLinksApi(): Promise<{ ok: true }> {
+  const res = await fetch("/api/studio/recovery-links", {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  return parseJsonResponse(res);
+}
+
+export async function consumeGuestRecoveryTokenApi(token: string): Promise<{
+  ok: true;
+  designsCount: number;
+  profilesCount: number;
 }> {
-  const res = await fetch("/api/customer/auth/register", {
+  const res = await fetch("/api/studio/recovery-links/consume", {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return parseJsonResponse(res);
-}
-
-export async function loginCustomerApi(payload: {
-  email: string;
-  password: string;
-}): Promise<{
-  customer: CustomerIdentitySummary;
-  designs: DesignStudioSavedConfig[];
-  profiles: MeasurementProfile[];
-}> {
-  const res = await fetch("/api/customer/auth/login", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return parseJsonResponse(res);
-}
-
-export async function logoutCustomerApi(): Promise<{ ok: true }> {
-  const res = await fetch("/api/customer/auth/logout", {
-    method: "POST",
-    credentials: "same-origin",
+    body: JSON.stringify({ token }),
   });
   return parseJsonResponse(res);
 }
@@ -231,7 +204,6 @@ export async function migrateLegacyStudioDataIfNeeded(): Promise<{
     profiles: MeasurementProfile[];
   }>(res);
 
-  // Verifikasi respons server sebelum membersihkan cache lokal lama
   if (data.ok && Array.isArray(data.designs) && Array.isArray(data.profiles)) {
     const designsVerified = localDesigns.length === 0 || data.designs.length > 0;
     const profilesVerified = localProfiles.length === 0 || data.profiles.length > 0;

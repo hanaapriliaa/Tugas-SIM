@@ -9,7 +9,6 @@ import {
   type MeasurementStudioStep,
 } from "@/components/measurement-studio/MeasurementStudioForm";
 import { SavedProfileView } from "@/components/measurement-studio/SavedProfileView";
-import { AutoSyncStatusBar } from "@/components/studio/AutoSyncStatusBar";
 import { buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
@@ -41,8 +40,6 @@ import {
   fetchMeasurementProfilesApi,
   migrateLegacyStudioDataIfNeeded,
   saveMeasurementProfileApi,
-  type AutoSyncState,
-  type CustomerIdentitySummary,
 } from "@/lib/studio-client";
 import { loadMeasurementTemplates } from "@/lib/storage/tailor-store";
 import type {
@@ -90,9 +87,6 @@ export function MeasurementStudio() {
   const [savedProfiles, setSavedProfiles] = useState<MeasurementProfile[]>([]);
   const [savedProfile, setSavedProfile] = useState<MeasurementProfile | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [syncState, setSyncState] = useState<AutoSyncState>("idle");
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     DEFAULT_MEASUREMENT_TEMPLATES.find((item) => item.id === "gamis")?.fields[0]?.key ?? null
   );
@@ -147,8 +141,6 @@ export function MeasurementStudio() {
     const targetRevision = latestRevisionRef.current;
     inFlightRef.current = true;
     setIsSaving(true);
-    setSyncState("saving");
-    setSyncError(null);
 
     try {
       const wasUpdate = Boolean(currentDraft.id && currentDraft.id.startsWith("mprof-"));
@@ -157,7 +149,6 @@ export function MeasurementStudio() {
       savedRevisionRef.current = Math.max(savedRevisionRef.current, targetRevision);
       setSavedProfiles((previous) => upsertMeasurementProfile(previous, profile));
       setSavedProfile(profile);
-      setLastSavedAt(profile.updatedAt);
       setErrors({});
 
       setDraft((previous) => {
@@ -184,9 +175,6 @@ export function MeasurementStudio() {
         void flushAutoSave(false);
         return;
       }
-
-      // Status "Tersimpan" hanya ditampilkan setelah server mengonfirmasi revisi terakhir
-      setSyncState("saved");
     } catch (err) {
       const message =
         err instanceof Error
@@ -195,8 +183,6 @@ export function MeasurementStudio() {
       if (err instanceof StudioApiError && err.errors && navigateToSavedOnSuccess) {
         setErrors(err.errors);
       }
-      setSyncState("error");
-      setSyncError(message);
       if (navigateToSavedOnSuccess) {
         setStatus({ tone: "error", message });
       }
@@ -221,8 +207,6 @@ export function MeasurementStudio() {
         return;
       }
 
-      setSyncState("saving");
-      setSyncError(null);
       debounceTimerRef.current = setTimeout(() => {
         void flushAutoSave(false);
       }, AUTOSYNC_DEBOUNCE_MS);
@@ -266,12 +250,13 @@ export function MeasurementStudio() {
         setSavedProfiles(storedProfiles);
       } catch (err) {
         if (!active) return;
-        setSyncState("error");
-        setSyncError(
-          err instanceof Error
-            ? err.message
-            : "Gagal memuat profil ukuran tersimpan dari server."
-        );
+        setStatus({
+          tone: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Gagal memuat profil ukuran tersimpan dari server.",
+        });
       }
 
       const primarySaved = storedProfiles[0] ?? null;
@@ -294,8 +279,6 @@ export function MeasurementStudio() {
         if (matched) {
           nextDraft = createMeasurementDraftFromProfile(matched, loadedTemplates);
           setSavedProfile(matched);
-          setLastSavedAt(matched.updatedAt);
-          setSyncState("saved");
           initialStep = 2;
           setView("editor");
           setStatus({
@@ -305,9 +288,13 @@ export function MeasurementStudio() {
         }
       }
 
-      if (!nextDraft && viewParam === "saved" && primarySaved) {
-        setLastSavedAt(primarySaved.updatedAt);
-        setSyncState("saved");
+      if (
+        !nextDraft &&
+        !templateParam &&
+        !categoryParam &&
+        viewParam !== "editor" &&
+        primarySaved
+      ) {
         setView("saved");
       }
 
@@ -495,9 +482,6 @@ export function MeasurementStudio() {
     savedRevisionRef.current = latestRevisionRef.current;
     setDraft(fresh);
     setErrors({});
-    setSyncState("idle");
-    setSyncError(null);
-    setLastSavedAt(null);
     setCurrentStep(1);
     setView("editor");
     setStatus({
@@ -515,9 +499,6 @@ export function MeasurementStudio() {
     savedRevisionRef.current = latestRevisionRef.current;
     setDraft(restored);
     setSavedProfile(profile);
-    setLastSavedAt(profile.updatedAt);
-    setSyncState("saved");
-    setSyncError(null);
     setActiveFieldKey(matchedTemplate.fields[0]?.key ?? null);
     setCurrentStep(2);
     setErrors({});
@@ -542,14 +523,11 @@ export function MeasurementStudio() {
         const nextDraft = createMeasurementDraftFromProfile(nextPrimary, templates);
         draftRef.current = nextDraft;
         setDraft(nextDraft);
-        setLastSavedAt(nextPrimary.updatedAt);
         setView("saved");
       } else {
         const fresh = createMeasurementDraftForTemplate(draft.templateId, templates);
         draftRef.current = fresh;
         setDraft(fresh);
-        setSyncState("idle");
-        setLastSavedAt(null);
         setCurrentStep(1);
         setView("editor");
       }
@@ -566,47 +544,12 @@ export function MeasurementStudio() {
     }
   }
 
-  function handleAccountSynced(payload: {
-    customer: CustomerIdentitySummary | null;
-    profiles?: MeasurementProfile[];
-  }) {
-    if (payload.profiles) {
-      setSavedProfiles(payload.profiles);
-      const first = payload.profiles[0] ?? null;
-      setSavedProfile(first);
-      if (first) {
-        const restored = createMeasurementDraftFromProfile(first, templates);
-        draftRef.current = restored;
-        setDraft(restored);
-        setLastSavedAt(first.updatedAt);
-        setSyncState("saved");
-        setView("saved");
-      } else if (!payload.customer) {
-        const fresh = createMeasurementDraftForTemplate("gamis", templates);
-        draftRef.current = fresh;
-        setDraft(fresh);
-        setSyncState("idle");
-        setLastSavedAt(null);
-        setView("editor");
-        setCurrentStep(1);
-      }
-    }
-    if (payload.customer) {
-      setStatus({
-        tone: "success",
-        message: `Masuk sebagai ${payload.customer.fullName || payload.customer.email}. Profil ukuran tersimpan telah disinkronkan.`,
-      });
-    }
-  }
-
   // =========================================================================
   // TAMPILAN PROFIL UKURAN TERSIMPAN
   // =========================================================================
   if (view === "saved" && savedProfile) {
     return (
       <SavedProfileView
-        lastSavedAt={lastSavedAt}
-        onAccountSynced={handleAccountSynced}
         onCreateNewProfile={handleCreateNewProfile}
         onDeleteProfile={(p) => void handleDeleteProfile(p)}
         onEditProfile={handleEditSavedProfile}
@@ -615,14 +558,11 @@ export function MeasurementStudio() {
           const restored = createMeasurementDraftFromProfile(p, templates);
           draftRef.current = restored;
           setDraft(restored);
-          setLastSavedAt(p.updatedAt);
           setStatus(null);
         }}
         profile={savedProfile}
         profiles={savedProfiles}
         statusMessage={status?.message ?? null}
-        syncError={syncError}
-        syncState={syncState}
         templates={templates}
       />
     );
@@ -674,16 +614,6 @@ export function MeasurementStudio() {
               Lihat Profil Tersimpan ({savedProfiles.length})
             </button>
           ) : null}
-        </div>
-
-        <div className="mt-6">
-          <AutoSyncStatusBar
-            lastSavedAt={lastSavedAt}
-            onAccountSynced={handleAccountSynced}
-            onRetry={() => void flushAutoSave(false)}
-            syncError={syncError}
-            syncState={syncState}
-          />
         </div>
       </section>
 

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { DesignStudioForm } from "@/components/design-studio/DesignStudioForm";
 import { SilhouettePreview } from "@/components/design-studio/SilhouettePreview";
-import { AutoSyncStatusBar } from "@/components/studio/AutoSyncStatusBar";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
@@ -33,7 +32,6 @@ import {
   migrateLegacyStudioDataIfNeeded,
   saveDesignApi,
   uploadStudioReferenceFileApi,
-  type AutoSyncState,
 } from "@/lib/studio-client";
 import type {
   DesignStudioSavedConfig,
@@ -70,9 +68,6 @@ export function DesignStudio() {
   const [hydrated, setHydrated] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [syncState, setSyncState] = useState<AutoSyncState>("idle");
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -116,8 +111,6 @@ export function DesignStudio() {
     const targetRevision = latestRevisionRef.current;
     inFlightRef.current = true;
     setIsSaving(true);
-    setSyncState("saving");
-    setSyncError(null);
 
     try {
       const wasUpdate = Boolean(currentDraft.id && currentDraft.id.startsWith("dsn-"));
@@ -125,7 +118,6 @@ export function DesignStudio() {
 
       savedRevisionRef.current = Math.max(savedRevisionRef.current, targetRevision);
       setSavedDesigns((previous) => upsertSavedDesign(previous, design));
-      setLastSavedAt(design.updatedAt);
       setErrors({});
 
       // Tetapkan ID server tanpa menimpa ketikan terbaru jika pengguna sedang mengetik lagi
@@ -151,17 +143,12 @@ export function DesignStudio() {
         void flushAutoSave(false);
         return;
       }
-
-      // Status "Tersimpan" hanya ditampilkan setelah server benar-benar mengonfirmasi revisi terakhir
-      setSyncState("saved");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Gagal menyimpan desain ke server. Coba lagi.";
       if (err instanceof StudioApiError && err.errors && forceManualFeedback) {
         setErrors(err.errors);
       }
-      setSyncState("error");
-      setSyncError(message);
       if (forceManualFeedback) {
         setStatus({ tone: "error", message });
       }
@@ -186,8 +173,6 @@ export function DesignStudio() {
         return;
       }
 
-      setSyncState("saving");
-      setSyncError(null);
       debounceTimerRef.current = setTimeout(() => {
         void flushAutoSave(false);
       }, AUTOSYNC_DEBOUNCE_MS);
@@ -228,12 +213,13 @@ export function DesignStudio() {
         setSavedDesigns(stored);
       } catch (err) {
         if (!active) return;
-        setSyncState("error");
-        setSyncError(
-          err instanceof Error
-            ? err.message
-            : "Gagal memuat daftar desain tersimpan dari server."
-        );
+        setStatus({
+          tone: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Gagal memuat daftar desain tersimpan dari server.",
+        });
       }
 
       const urlParams =
@@ -250,8 +236,6 @@ export function DesignStudio() {
         const matched = stored.find((item) => item.id === designIdParam);
         if (matched) {
           nextDraft = createDesignDraftFromSaved(matched);
-          setLastSavedAt(matched.updatedAt);
-          setSyncState("saved");
           setStatus({
             tone: "info",
             message: `Memuat desain tersimpan "${matched.title}" untuk diedit.`,
@@ -402,9 +386,6 @@ export function DesignStudio() {
     setDraft(restored);
     setErrors({});
     setUploadError(null);
-    setSyncState("saved");
-    setSyncError(null);
-    setLastSavedAt(config.updatedAt);
     setStatus({ tone: "info", message: `Memuat desain "${config.title}" untuk diedit.` });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -421,8 +402,6 @@ export function DesignStudio() {
         draftRef.current = empty;
         setDraft(empty);
         setErrors({});
-        setSyncState("idle");
-        setLastSavedAt(null);
       }
 
       setStatus({
@@ -445,9 +424,6 @@ export function DesignStudio() {
     setDraft(empty);
     setErrors({});
     setUploadError(null);
-    setSyncState("idle");
-    setSyncError(null);
-    setLastSavedAt(null);
     setStatus({ tone: "info", message: "Draft desain baru siap diisi." });
   }
 
@@ -476,32 +452,6 @@ export function DesignStudio() {
           >
             Desain Baru
           </button>
-        </div>
-
-        <div className="mt-6">
-          <AutoSyncStatusBar
-            lastSavedAt={lastSavedAt}
-            onAccountSynced={({ customer, designs }) => {
-              if (designs) {
-                setSavedDesigns(designs);
-              }
-              if (customer) {
-                setStatus({
-                  tone: "success",
-                  message: `Masuk sebagai ${customer.fullName || customer.email}. Daftar desain tersimpan telah disinkronkan.`,
-                });
-              } else {
-                const empty = createEmptyDesignDraft();
-                draftRef.current = empty;
-                setDraft(empty);
-                setSyncState("idle");
-                setLastSavedAt(null);
-              }
-            }}
-            onRetry={() => void flushAutoSave(false)}
-            syncError={syncError}
-            syncState={syncState}
-          />
         </div>
       </section>
 

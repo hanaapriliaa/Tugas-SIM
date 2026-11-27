@@ -25,7 +25,7 @@ const sections = [
       "Meninjau kelayakan desain, ketersediaan bahan, dan menyusun penawaran harga akhir serta estimasi penyelesaian.",
       "Memproduksi busana sesuai snapshot ukuran dan spesifikasi yang disepakati pada masing-masing pesanan.",
       "Memverifikasi pembayaran DP 50% dan pelunasan secara manual oleh admin, serta mengatur serah terima atau pengiriman pesanan.",
-      "Memungkinkan Anda membuka kembali desain, profil ukuran, percakapan chat, dan pelacakan pesanan lintas perangkat.",
+      "Memungkinkan Anda melanjutkan desain, profil ukuran, percakapan chat, dan pelacakan pesanan dari sesi browser Anda atau melalui verifikasi pesanan di halaman Lacak Pesanan.",
     ],
   },
   {
@@ -34,7 +34,7 @@ const sections = [
       "Data pesanan, chat, desain tersimpan, dan profil ukuran disimpan pada database Cloudflare D1, sedangkan file biner (referensi desain, lampiran chat, dan bukti pembayaran) disimpan di penyimpanan privat Cloudflare R2.",
       "Akses sesi menggunakan cookie HttpOnly (celmira_chat_session untuk sesi pelanggan dan celmira_track_session untuk akses pelacakan terverifikasi). Draft formulir pesanan yang belum dikirim dapat tersimpan sementara di browser Anda agar tidak hilang saat pengisian.",
       "Pelacakan pesanan dilindungi verifikasi dua faktor (nomor pesanan disertai nomor WhatsApp terdaftar atau Kode Akses Tracking). Akses file privat hanya diberikan kepada pemilik sesi, pemegang verifikasi tracking pesanan terkait, atau admin terautentikasi.",
-      "Pemulihan data Design Studio dan Measurement Studio di perangkat atau browser lain dilakukan secara otomatis melalui akun pelanggan terautentikasi (kata sandi di-hash dengan PBKDF2-SHA256) atau melalui sesi pemesanan yang telah lolos verifikasi dua faktor di halaman Lacak Pesanan.",
+      "Celmira Tailor tidak mewajibkan pendaftaran atau kata sandi bagi pelanggan. Data Design Studio dan Measurement Studio tersimpan otomatis ke server berdasarkan sesi browser Anda (cookie HttpOnly celmira_chat_session). Untuk membuka kembali pesanan dan memulihkan akses sesi setelah pemesanan, pelanggan dapat menggunakan verifikasi dua faktor pada halaman Lacak Pesanan.",
     ],
   },
   {

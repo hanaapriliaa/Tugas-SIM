@@ -4,6 +4,7 @@ import { ensureChatSchema } from "./chat-schema.ts";
 export const CUSTOMER_SESSION_COOKIE = "celmira_chat_session";
 export const ADMIN_SESSION_COOKIE = "celmira_admin_session";
 export const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+export const CUSTOMER_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const CUSTOMER_COOKIE_MAX_AGE_SECONDS = 90 * 24 * 60 * 60;
 export const ADMIN_COOKIE_MAX_AGE_SECONDS = 24 * 60 * 60;
 
@@ -188,15 +189,18 @@ export async function getCustomerSession(
     }>();
 
   if (!row) {
-    try {
-      row = await db
+    const nowIso = new Date().toISOString();
+    const queryDeviceToken = () =>
+      db
         .prepare(
           `SELECT s.id, s.customer_name, s.customer_whatsapp_norm, s.created_at, s.last_seen_at
            FROM customer_session_tokens t
            INNER JOIN chat_customer_sessions s ON s.id = t.customer_session_id
-           WHERE t.token_hash = ?`
+           WHERE t.token_hash = ?
+             AND t.revoked_at IS NULL
+             AND (t.expires_at IS NULL OR t.expires_at > ?)`
         )
-        .bind(tokenHash)
+        .bind(tokenHash, nowIso)
         .first<{
           id: string;
           customer_name: string | null;
@@ -204,14 +208,35 @@ export async function getCustomerSession(
           created_at: string;
           last_seen_at: string;
         }>();
-      if (row) {
+    try {
+      row = await queryDeviceToken();
+    } catch {
+      // Pada cold start database lama sebelum ensureStudioSchema berjalan, tambahkan kolom expiry/revoked jika tabel sudah ada.
+      try {
+        try {
+          await db.prepare(`ALTER TABLE customer_session_tokens ADD COLUMN expires_at TEXT`).run();
+        } catch {
+          // Kolom sudah ada atau tabel belum dibuat.
+        }
+        try {
+          await db.prepare(`ALTER TABLE customer_session_tokens ADD COLUMN revoked_at TEXT`).run();
+        } catch {
+          // Kolom sudah ada atau tabel belum dibuat.
+        }
+        row = await queryDeviceToken();
+      } catch {
+        // Tabel customer_session_tokens belum ada pada test minimal Stage 5B-2.
+      }
+    }
+    if (row) {
+      try {
         await db
           .prepare(`UPDATE customer_session_tokens SET last_seen_at = ? WHERE token_hash = ?`)
-          .bind(new Date().toISOString(), tokenHash)
+          .bind(nowIso, tokenHash)
           .run();
+      } catch {
+        // Abaikan jika update last_seen_at gagal pada lingkungan minimal.
       }
-    } catch {
-      // Tabel customer_session_tokens mungkin belum dibuat pada test minimal Stage 5B-2.
     }
   }
 
@@ -281,20 +306,41 @@ export async function issueAdditionalCustomerSessionCookie(
   const rawToken = generateOpaqueToken(32);
   const tokenHash = await sha256Hex(rawToken);
   const id = `cstok-${crypto.randomUUID()}`;
-  const now = new Date().toISOString();
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + CUSTOMER_SESSION_TTL_MS).toISOString();
 
   await db
     .prepare(
-      `INSERT INTO customer_session_tokens (id, customer_session_id, token_hash, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO customer_session_tokens (id, customer_session_id, token_hash, expires_at, revoked_at, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, NULL, ?, ?)`
     )
-    .bind(id, customerSessionId, tokenHash, now, now)
+    .bind(id, customerSessionId, tokenHash, expiresAt, createdAt, createdAt)
     .run();
 
   return buildSetCookieHeader(CUSTOMER_SESSION_COOKIE, rawToken, {
     maxAge: CUSTOMER_COOKIE_MAX_AGE_SECONDS,
     secure: isSecureRequest(request),
   });
+}
+
+export async function revokeCustomerDeviceToken(
+  request: Request,
+  db: D1Database
+): Promise<string> {
+  const rawToken = getCookieFromRequest(request, CUSTOMER_SESSION_COOKIE);
+  if (rawToken && rawToken.length >= 32) {
+    const tokenHash = await sha256Hex(rawToken);
+    try {
+      await db
+        .prepare(`UPDATE customer_session_tokens SET revoked_at = ? WHERE token_hash = ?`)
+        .bind(new Date().toISOString(), tokenHash)
+        .run();
+    } catch {
+      // Abaikan bila token merupakan sesi primer tanpa baris customer_session_tokens.
+    }
+  }
+  return buildClearCookieHeader(CUSTOMER_SESSION_COOKIE, isSecureRequest(request));
 }
 
 function extractBearerToken(request: Request, scheme: "Bearer" | "Customer"): string | null {

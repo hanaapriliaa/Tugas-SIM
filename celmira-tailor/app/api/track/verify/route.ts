@@ -1,7 +1,6 @@
 import { evaluateDpOverdueForReview, verifyOrderTrackingAccess } from "@/lib/order-tracking";
 import { issueAdditionalCustomerSessionCookie } from "@/lib/server/auth";
 import { getChatEnv } from "@/lib/server/cf-env";
-import { getAuthenticatedCustomerAccount } from "@/lib/server/customer-auth";
 import {
   getOrderByCode,
   getOrInitPaymentConfigInDb,
@@ -52,16 +51,14 @@ export async function POST(request: Request) {
     return Response.json({ error: verification.error }, { status: 403 });
   }
 
-  const [trackingCookie, paymentConfig, activeAccount] = await Promise.all([
+  const [trackingCookie, paymentConfig] = await Promise.all([
     grantTrackingAccessCookie(request, env.DB, verification.order.orderCode),
     getOrInitPaymentConfigInDb(env.DB),
-    getAuthenticatedCustomerAccount(request, env.DB),
   ]);
 
-  // Pemulihan sesi studio otomatis melalui verifikasi pesanan 2FA yang sah
-  // (tidak menimpa bila browser sudah login ke akun pelanggan lain).
+  // Pemulihan sesi guest studio otomatis melalui verifikasi pesanan 2FA yang sah
   let studioRecoveryCookie: string | null = null;
-  if (found.customerSessionId && !activeAccount) {
+  if (found.customerSessionId) {
     await ensureStudioSchema(env.DB);
     studioRecoveryCookie = await issueAdditionalCustomerSessionCookie(
       request,

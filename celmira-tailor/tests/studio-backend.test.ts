@@ -20,10 +20,11 @@ import {
   saveMeasurementProfileInDb,
 } from "../lib/server/studio-repo.ts";
 import {
-  normalizeCustomerEmail,
-  validateCustomerEmail,
-  validateCustomerPassword,
-} from "../lib/server/customer-auth.ts";
+  RECOVERY_TOKEN_TTL_MS,
+  consumeGuestRecoveryToken,
+  createGuestRecoveryToken,
+  revokeActiveGuestRecoveryTokens,
+} from "../lib/server/guest-recovery.ts";
 import { createOrderInDb, getOrderById } from "../lib/server/order-repo.ts";
 
 const PNG_HEADER = new Uint8Array([
@@ -34,14 +35,19 @@ const FAKE_HTML = new TextEncoder().encode("<html><script>alert(1)</script></htm
 
 /**
  * Mock D1 in-memory untuk menguji repository Design Studio, Measurement Studio,
- * migrasi idempotent localStorage, dan immutability snapshot ukuran pesanan.
+ * migrasi idempotent localStorage, token pemulihan privat satu kali pakai,
+ * dan immutability snapshot ukuran pesanan.
  */
 function createInMemoryMockDb() {
   const designs = new Map<string, Record<string, unknown>>();
   const profiles = new Map<string, Record<string, unknown>>();
   const orders = new Map<string, Record<string, unknown>>();
+  const recoveryTokens = new Map<string, Record<string, unknown>>();
+  const sessionTokens = new Map<string, Record<string, unknown>>();
 
   const db = {
+    _recoveryTokens: recoveryTokens,
+    _sessionTokens: sessionTokens,
     async batch() {
       return [];
     },
@@ -53,6 +59,12 @@ function createInMemoryMockDb() {
           return stmt;
         },
         async first<T>() {
+          if (/FROM studio_recovery_tokens\s+WHERE token_hash = \?/i.test(sql)) {
+            for (const row of recoveryTokens.values()) {
+              if (row.token_hash === bound[0]) return row as T;
+            }
+            return null as T;
+          }
           if (/FROM design_configs WHERE customer_session_id = \? AND legacy_local_id = \?/i.test(sql)) {
             for (const row of designs.values()) {
               if (row.customer_session_id === bound[0] && row.legacy_local_id === bound[1]) {
@@ -108,7 +120,44 @@ function createInMemoryMockDb() {
           return { results: [] as T[] };
         },
         async run() {
-          if (/INSERT INTO design_configs/i.test(sql)) {
+          if (/INSERT INTO studio_recovery_tokens/i.test(sql)) {
+            recoveryTokens.set(String(bound[0]), {
+              id: bound[0],
+              customer_session_id: bound[1],
+              token_hash: bound[2],
+              expires_at: bound[3],
+              used_at: null,
+              revoked_at: null,
+              created_at: bound[4],
+            });
+          } else if (/UPDATE studio_recovery_tokens\s+SET revoked_at = \?/i.test(sql)) {
+            for (const row of recoveryTokens.values()) {
+              if (
+                row.customer_session_id === bound[1] &&
+                row.used_at === null &&
+                row.revoked_at === null
+              ) {
+                row.revoked_at = bound[0];
+              }
+            }
+          } else if (/UPDATE studio_recovery_tokens\s+SET used_at = \?/i.test(sql)) {
+            const target = recoveryTokens.get(String(bound[1]));
+            if (target && target.used_at === null && target.revoked_at === null) {
+              target.used_at = bound[0];
+              return { success: true, meta: { changes: 1 } };
+            }
+            return { success: true, meta: { changes: 0 } };
+          } else if (/INSERT INTO customer_session_tokens/i.test(sql)) {
+            sessionTokens.set(String(bound[0]), {
+              id: bound[0],
+              customer_session_id: bound[1],
+              token_hash: bound[2],
+              expires_at: bound[3],
+              revoked_at: null,
+              created_at: bound[4],
+              last_seen_at: bound[5],
+            });
+          } else if (/INSERT INTO design_configs/i.test(sql)) {
             const hasLegacy = /legacy_local_id/i.test(sql);
             if (hasLegacy) {
               designs.set(String(bound[0]), {
@@ -221,26 +270,92 @@ function createInMemoryMockDb() {
     },
   };
 
-  return db as unknown as D1Database;
+  return db as unknown as D1Database & {
+    _recoveryTokens: Map<string, Record<string, unknown>>;
+    _sessionTokens: Map<string, Record<string, unknown>>;
+  };
 }
 
-describe("Stage 6B & Revisi — Design Studio, Measurement Studio, Accounts & Migration", () => {
-  it("memiliki DDL lengkap termasuk customer_accounts, legacy_local_id, dan tabel studio", () => {
+describe("Stage 6B & Pure Guest System — Studios, Private Recovery & Migration", () => {
+  it("memiliki DDL lengkap untuk guest session tokens (expires/revoked), recovery tokens, dan tabel studio", () => {
     const joined = STUDIO_SCHEMA_STATEMENTS.join("\n");
     assert.match(joined, /CREATE TABLE IF NOT EXISTS customer_session_tokens/i);
-    assert.match(joined, /CREATE TABLE IF NOT EXISTS customer_accounts/i);
+    assert.match(joined, /expires_at/i);
+    assert.match(joined, /revoked_at/i);
+    assert.match(joined, /CREATE TABLE IF NOT EXISTS studio_recovery_tokens/i);
     assert.match(joined, /CREATE TABLE IF NOT EXISTS design_configs/i);
     assert.match(joined, /CREATE TABLE IF NOT EXISTS measurement_profiles/i);
     assert.match(joined, /CREATE TABLE IF NOT EXISTS studio_files/i);
     assert.match(joined, /legacy_local_id/i);
   });
 
-  it("memvalidasi email dan kata sandi akun pelanggan secara ketat", () => {
-    assert.equal(normalizeCustomerEmail("  Hana@Example.COM "), "hana@example.com");
-    assert.equal(validateCustomerEmail("hana@example.com"), true);
-    assert.equal(validateCustomerEmail("tidak-valid"), false);
-    assert.equal(validateCustomerPassword("1234567"), "Kata sandi minimal 8 karakter.");
-    assert.equal(validateCustomerPassword("KuatSekali2026!"), null);
+  it("token pemulihan privat hanya menyimpan hash, satu kali pakai, dapat kedaluwarsa, dan dapat dicabut", async () => {
+    const db = createInMemoryMockDb();
+    const sessionId = "csess-guest-recovery-1";
+    const req = new Request("https://celmira.local/api/studio/recovery-links/consume", {
+      method: "POST",
+    });
+
+    const t0 = new Date("2026-11-27T10:00:00.000Z");
+    const created = await createGuestRecoveryToken(db, sessionId, t0);
+    assert.equal(created.token.length, 64);
+
+    // Pastikan plaintext token TIDAK pernah tersimpan di database (hanya hash SHA-256)
+    const storedRows = Array.from(db._recoveryTokens.values());
+    assert.equal(storedRows.length, 1);
+    assert.notEqual(storedRows[0].token_hash, created.token);
+
+    // Pemakaian pertama valid -> menghasilkan cookie HttpOnly dan menandai used_at
+    const firstConsume = await consumeGuestRecoveryToken(
+      req,
+      db,
+      created.token,
+      new Date(t0.getTime() + 60_000)
+    );
+    assert.equal(firstConsume.ok, true);
+    if (firstConsume.ok) {
+      assert.equal(firstConsume.customerSessionId, sessionId);
+      assert.match(firstConsume.setCookieHeader, /celmira_chat_session=/);
+      assert.match(firstConsume.setCookieHeader, /HttpOnly/);
+    }
+
+    // Pemakaian kedua (replay) HARUS ditolak 410
+    const replay = await consumeGuestRecoveryToken(
+      req,
+      db,
+      created.token,
+      new Date(t0.getTime() + 120_000)
+    );
+    assert.equal(replay.ok, false);
+    if (!replay.ok) assert.equal(replay.status, 410);
+
+    // Token baru yang dicabut HARUS ditolak 410
+    const created2 = await createGuestRecoveryToken(db, sessionId, t0);
+    await revokeActiveGuestRecoveryTokens(db, sessionId, new Date(t0.getTime() + 5_000));
+    const afterRevoke = await consumeGuestRecoveryToken(
+      req,
+      db,
+      created2.token,
+      new Date(t0.getTime() + 10_000)
+    );
+    assert.equal(afterRevoke.ok, false);
+    if (!afterRevoke.ok) assert.equal(afterRevoke.status, 410);
+
+    // Token kedaluwarsa (> 15 menit) HARUS ditolak 410
+    const created3 = await createGuestRecoveryToken(db, sessionId, t0);
+    const afterExpiry = await consumeGuestRecoveryToken(
+      req,
+      db,
+      created3.token,
+      new Date(t0.getTime() + RECOVERY_TOKEN_TTL_MS + 1000)
+    );
+    assert.equal(afterExpiry.ok, false);
+    if (!afterExpiry.ok) assert.equal(afterExpiry.status, 410);
+
+    // ID tebakan pendek HARUS ditolak 400
+    const guess = await consumeGuestRecoveryToken(req, db, "csess-123");
+    assert.equal(guess.ok, false);
+    if (!guess.ok) assert.equal(guess.status, 400);
   });
 
   it("memvalidasi file referensi studio (PNG/PDF valid, tolak HTML palsu)", () => {
@@ -289,7 +404,6 @@ describe("Stage 6B & Revisi — Design Studio, Measurement Studio, Accounts & Mi
     assert.equal(first.designs.length, 1);
     assert.equal(first.profiles.length, 1);
 
-    // Panggilan kedua dengan data yang sama HARUS 0 duplikasi
     const second = await migrateLegacyStudioDataInDb(db, null, sessionId, {
       designs: [legacyDesign],
       profiles: [legacyProfile],
@@ -386,7 +500,6 @@ describe("Stage 6B & Revisi — Design Studio, Measurement Studio, Accounts & Mi
     assert.equal(order.designModelName, "Gamis Flowy");
     assert.ok(order.measurements.snapshotTakenAt);
 
-    // Perbarui profil ukuran customer di Measurement Studio
     const editedMeasureDraft = {
       ...mDraft,
       id: savedProfile.profile.id,
@@ -409,7 +522,6 @@ describe("Stage 6B & Revisi — Design Studio, Measurement Studio, Accounts & Mi
     assert.equal(profilesAfter[0].values.bust, "104");
     assert.equal(profilesAfter[0].values.garmentLength, "144");
 
-    // Verifikasi pesanan lama TIDAK berubah
     const oldOrder = await getOrderById(db, order.id);
     assert.ok(oldOrder);
     assert.equal(oldOrder.order.measurements.values.bust, "92");

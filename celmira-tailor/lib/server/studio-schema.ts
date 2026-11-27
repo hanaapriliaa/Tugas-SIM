@@ -5,26 +5,28 @@ export const STUDIO_SCHEMA_STATEMENTS: readonly string[] = [
     id TEXT PRIMARY KEY,
     customer_session_id TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT,
+    revoked_at TEXT,
     created_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     FOREIGN KEY (customer_session_id) REFERENCES chat_customer_sessions(id) ON DELETE CASCADE
   )`,
   `CREATE INDEX IF NOT EXISTS idx_customer_session_tokens_session
     ON customer_session_tokens(customer_session_id)`,
-  `CREATE TABLE IF NOT EXISTS customer_accounts (
+  `CREATE TABLE IF NOT EXISTS studio_recovery_tokens (
     id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    full_name TEXT NOT NULL DEFAULT '',
-    customer_session_id TEXT NOT NULL UNIQUE,
+    customer_session_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    revoked_at TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
     FOREIGN KEY (customer_session_id) REFERENCES chat_customer_sessions(id) ON DELETE CASCADE
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_accounts_email
-    ON customer_accounts(email)`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_accounts_session
-    ON customer_accounts(customer_session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_studio_recovery_tokens_session
+    ON studio_recovery_tokens(customer_session_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_studio_recovery_tokens_expires
+    ON studio_recovery_tokens(expires_at)`,
   `CREATE TABLE IF NOT EXISTS studio_access_codes (
     customer_session_id TEXT PRIMARY KEY,
     sync_code TEXT NOT NULL UNIQUE,
@@ -81,18 +83,22 @@ export const STUDIO_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_studio_files_session ON studio_files(customer_session_id)`,
 ];
 
-const LEGACY_COLUMN_ALTERS: readonly string[] = [
+const SCHEMA_ALTER_STATEMENTS: readonly string[] = [
   `ALTER TABLE design_configs ADD COLUMN legacy_local_id TEXT`,
   `ALTER TABLE measurement_profiles ADD COLUMN legacy_local_id TEXT`,
+  `ALTER TABLE customer_session_tokens ADD COLUMN expires_at TEXT`,
+  `ALTER TABLE customer_session_tokens ADD COLUMN revoked_at TEXT`,
 ];
 
-const LEGACY_INDEX_STATEMENTS: readonly string[] = [
+const POST_ALTER_INDEX_STATEMENTS: readonly string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_design_configs_legacy
     ON design_configs(customer_session_id, legacy_local_id)
     WHERE legacy_local_id IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_measurement_profiles_legacy
     ON measurement_profiles(customer_session_id, legacy_local_id)
     WHERE legacy_local_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_customer_session_tokens_expires
+    ON customer_session_tokens(expires_at)`,
 ];
 
 const initializedStudioDbs = new WeakSet<D1Database>();
@@ -101,13 +107,13 @@ export async function ensureStudioSchema(db: D1Database): Promise<void> {
   if (initializedStudioDbs.has(db)) return;
   await ensureChatSchema(db);
   await db.batch(STUDIO_SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
-  for (const alterSql of LEGACY_COLUMN_ALTERS) {
+  for (const alterSql of SCHEMA_ALTER_STATEMENTS) {
     try {
       await db.prepare(alterSql).run();
     } catch {
-      // Kolom legacy_local_id sudah ada pada database baru.
+      // Kolom sudah ada pada database terbaru.
     }
   }
-  await db.batch(LEGACY_INDEX_STATEMENTS.map((sql) => db.prepare(sql)));
+  await db.batch(POST_ALTER_INDEX_STATEMENTS.map((sql) => db.prepare(sql)));
   initializedStudioDbs.add(db);
 }
