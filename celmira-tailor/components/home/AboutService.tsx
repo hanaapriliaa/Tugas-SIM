@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { CheckIcon } from "@/components/ui/icons";
+import { ArrowRight, CheckIcon } from "@/components/ui/icons";
 import { site } from "@/lib/site";
 
 const facts = [
@@ -65,6 +66,17 @@ export function AboutService() {
             direplikasi dari baju yang paling nyaman dipakai. Detail teknisnya akan dikonfirmasi
             bersama tim produksi.
           </p>
+
+          <div className="flex flex-wrap items-center gap-5 pt-1">
+            <Link className="link-underline" href="/tentang-kami">
+              Selengkapnya tentang kami
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link className="link-underline" href="/kontak">
+              Lokasi &amp; kontak
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
       </div>
     </section>

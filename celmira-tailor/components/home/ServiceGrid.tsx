@@ -18,10 +18,15 @@ export function ServiceGrid() {
             </span>
           }
         />
-        <Link className={buttonClass("outline", "w-fit shrink-0")} href="/catalog">
-          Lihat Katalog Jahit
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link className={buttonClass("outline", "w-fit shrink-0")} href="/layanan">
+            Info Layanan
+          </Link>
+          <Link className={buttonClass("outline", "w-fit shrink-0")} href="/catalog">
+            Lihat Katalog Jahit
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
       <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -89,6 +89,7 @@ export type CustomerMeasurements = {
   extraValues?: MeasurementExtraValues;
   sampleGarmentNote: string;
   fitPreferenceNote: string;
+  snapshotTakenAt?: string;
 };
 
 export type MeasurementTemplateId =
@@ -337,6 +338,7 @@ export type SubmittedOrder = {
   categoryName: string;
   designSource: DesignSourceType;
   designTitle: string;
+  designModelName?: string;
   selectedCelmiraDesignId?: string;
   selectedStudioDesignId?: string;
   attachments: ReferenceAttachment[];

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { navigation, site, studioNavigation } from "@/lib/site";
+import { legalNavigation, navigation, site, studioNavigation } from "@/lib/site";
 import { ArrowRight, CloseIcon, PinIcon } from "@/components/ui/icons";
 
 type MobileNavigationProps = {
@@ -99,6 +99,23 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
               >
                 {item.label}
                 <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ))}
+          </div>
+
+          <p className="mt-6 text-[0.625rem] font-medium uppercase tracking-[0.26em] text-muted">
+            Kebijakan
+          </p>
+          <div className="mt-2 flex flex-col">
+            {legalNavigation.map((item) => (
+              <Link
+                className="flex items-center justify-between border-b border-cocoa/10 py-2.5 text-xs text-muted"
+                href={item.href}
+                key={item.href}
+                onClick={onClose}
+              >
+                {item.label}
+                <ArrowRight className="h-3 w-3" />
               </Link>
             ))}
           </div>

@@ -14,13 +14,18 @@ export function ProcessSteps() {
             title={<span id="cara-pemesanan-title">Alur yang jelas, dari ide sampai selesai.</span>}
           />
           <div className="flex flex-col gap-4">
-            <ButtonLink className="w-fit" href="/orders">
-              Mulai Pesanan
-              <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
-            </ButtonLink>
+            <div className="flex flex-wrap items-center gap-3">
+              <ButtonLink className="w-fit" href="/orders">
+                Mulai Pesanan
+                <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
+              </ButtonLink>
+              <ButtonLink className="w-fit" href="/cara-pemesanan" variant="outline">
+                Panduan Lengkap
+              </ButtonLink>
+            </div>
             <p className="max-w-sm text-xs leading-relaxed text-muted/90">
-              Tahap ini menjelaskan alur yang direncanakan. Pengajuan pesanan daring belum aktif —
-              tombol di atas mengarah ke halaman persiapan.
+              Belum ada tagihan saat pengajuan. Penawaran harga akhir, verifikasi DP 50%, dan
+              pelacakan 10 tahap produksi tersedia langsung di platform ini.
             </p>
           </div>
         </div>

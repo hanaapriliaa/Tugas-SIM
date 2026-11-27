@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
-import { ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { DesignStudioForm } from "@/components/design-studio/DesignStudioForm";
 import { SilhouettePreview } from "@/components/design-studio/SilhouettePreview";
+import { StudioSyncPanel } from "@/components/studio/StudioSyncPanel";
+import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
+import { ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
+import { MAX_ATTACHMENTS_COUNT, validateAttachmentFile } from "@/lib/booking-validation";
 import { buildChatHref } from "@/lib/chat";
 import {
   MAX_SAVED_DESIGNS,
@@ -15,7 +17,6 @@ import {
   createDesignDraftFromReference,
   createDesignDraftFromSaved,
   createEmptyDesignDraft,
-  createSavedDesignConfig,
   formatSavedDate,
   getCategoryName,
   getModelOptions,
@@ -25,12 +26,18 @@ import {
   validateDesignDraft,
   type DesignStudioDraft,
 } from "@/lib/design-studio";
-import { loadSavedDesigns, saveSavedDesigns } from "@/lib/storage/tailor-store";
-import { processAttachmentFiles } from "@/lib/attachments";
+import {
+  StudioApiError,
+  deleteDesignApi,
+  fetchSavedDesignsApi,
+  saveDesignApi,
+  uploadStudioReferenceFileApi,
+} from "@/lib/studio-client";
 import type {
   DesignStudioSavedConfig,
   GarmentCategoryId,
   GarmentSpecifications,
+  ReferenceAttachment,
 } from "@/lib/types/tailor";
 
 type StatusTone = "success" | "error" | "info";
@@ -41,10 +48,10 @@ type StatusMessage = {
 };
 
 const smallAction =
-  "inline-flex items-center justify-center gap-1.5 rounded-full border border-cocoa/25 px-4 py-2 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-espresso transition-colors hover:border-cocoa hover:bg-cream/70";
+  "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full border border-cocoa/25 px-4 py-2 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-espresso transition-colors hover:border-cocoa hover:bg-cream/70";
 
 const smallPrimary =
-  "inline-flex items-center justify-center gap-1.5 rounded-full bg-espresso px-4 py-2 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-ivory transition-colors hover:bg-cocoa";
+  "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full bg-espresso px-4 py-2 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-ivory transition-colors hover:bg-cocoa";
 
 function statusClass(tone: StatusTone): string {
   if (tone === "error") return "border-rose/30 bg-rose/10 text-rose";
@@ -56,41 +63,84 @@ export function DesignStudio() {
   const searchParams = useSearchParams();
   const [draft, setDraft] = useState<DesignStudioDraft>(() => createEmptyDesignDraft());
   const [savedDesigns, setSavedDesigns] = useState<DesignStudioSavedConfig[]>([]);
+  const [syncCode, setSyncCode] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    const stored = loadSavedDesigns();
-    setSavedDesigns(stored);
+    let active = true;
 
-    const referenceParam = searchParams.get("reference");
-    const categoryParam = searchParams.get("category");
-
-    let nextDraft: DesignStudioDraft | null = null;
-
-    if (referenceParam) {
-      nextDraft = createDesignDraftFromReference(referenceParam);
-      if (nextDraft) {
+    async function bootstrap() {
+      let stored: DesignStudioSavedConfig[] = [];
+      try {
+        const res = await fetchSavedDesignsApi();
+        if (!active) return;
+        stored = res.designs;
+        setSavedDesigns(res.designs);
+        setSyncCode(res.syncCode);
+      } catch (err) {
+        if (!active) return;
         setStatus({
-          tone: "info",
-          message: `Dimulai dari referensi "${nextDraft.modelName}". Lengkapi detail lalu simpan.`,
+          tone: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Gagal memuat daftar desain tersimpan dari server.",
         });
       }
+
+      const urlParams =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const getParam = (key: string) => searchParams.get(key) ?? urlParams?.get(key) ?? null;
+
+      const designIdParam = getParam("designId");
+      const referenceParam = getParam("reference");
+      const categoryParam = getParam("category");
+
+      let nextDraft: DesignStudioDraft | null = null;
+
+      if (designIdParam) {
+        const matched = stored.find((item) => item.id === designIdParam);
+        if (matched) {
+          nextDraft = createDesignDraftFromSaved(matched);
+          setStatus({
+            tone: "info",
+            message: `Memuat desain tersimpan "${matched.title}" untuk diedit.`,
+          });
+        }
+      }
+
+      if (!nextDraft && referenceParam) {
+        nextDraft = createDesignDraftFromReference(referenceParam);
+        if (nextDraft) {
+          setStatus({
+            tone: "info",
+            message: `Dimulai dari referensi "${nextDraft.modelName}". Lengkapi detail lalu simpan.`,
+          });
+        }
+      }
+
+      if (
+        !nextDraft &&
+        categoryParam &&
+        garmentCategories.some((category) => category.id === categoryParam)
+      ) {
+        nextDraft = createEmptyDesignDraft(categoryParam as GarmentCategoryId);
+      }
+
+      if (nextDraft) setDraft(nextDraft);
+      setHydrated(true);
     }
 
-    if (
-      !nextDraft &&
-      categoryParam &&
-      garmentCategories.some((category) => category.id === categoryParam)
-    ) {
-      nextDraft = createEmptyDesignDraft(categoryParam as GarmentCategoryId);
-    }
-
-    if (nextDraft) setDraft(nextDraft);
-    setHydrated(true);
+    void bootstrap();
+    return () => {
+      active = false;
+    };
     // Query hanya dibaca saat pertama dibuka agar isian pengguna tidak ter-reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -137,17 +187,48 @@ export function DesignStudio() {
   }
 
   async function handleFilesSelected(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
     setUploadError(null);
-    const { attachments, error } = await processAttachmentFiles(
-      fileList,
-      draft.attachments.length
-    );
-    if (error) setUploadError(error);
-    if (attachments.length > 0) {
-      setDraft((previous) => ({
-        ...previous,
-        attachments: [...previous.attachments, ...attachments],
-      }));
+
+    const remainingSlots = MAX_ATTACHMENTS_COUNT - draft.attachments.length;
+    if (remainingSlots <= 0) {
+      setUploadError(`Maksimal ${MAX_ATTACHMENTS_COUNT} file referensi per desain.`);
+      return;
+    }
+
+    const candidates = Array.from(fileList).slice(0, remainingSlots);
+    const rejectedMessages: string[] = [];
+    const uploadedAttachments: ReferenceAttachment[] = [];
+
+    setIsUploading(true);
+    try {
+      for (const file of candidates) {
+        const localErr = validateAttachmentFile(file);
+        if (localErr) {
+          rejectedMessages.push(localErr);
+          continue;
+        }
+        try {
+          const res = await uploadStudioReferenceFileApi(file, draft.id);
+          uploadedAttachments.push(res.attachment);
+        } catch (err) {
+          rejectedMessages.push(
+            err instanceof Error ? err.message : `Gagal mengunggah "${file.name}".`
+          );
+        }
+      }
+
+      if (uploadedAttachments.length > 0) {
+        setDraft((previous) => ({
+          ...previous,
+          attachments: [...previous.attachments, ...uploadedAttachments],
+        }));
+      }
+      if (rejectedMessages.length > 0) {
+        setUploadError(rejectedMessages.join(" "));
+      }
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -158,7 +239,7 @@ export function DesignStudio() {
     }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     const result = validateDesignDraft(draft);
     if (!result.valid) {
       setErrors(result.errors);
@@ -169,38 +250,66 @@ export function DesignStudio() {
       return;
     }
 
-    const config = createSavedDesignConfig(draft);
-    const next = upsertSavedDesign(savedDesigns, config);
-    saveSavedDesigns(next);
-    setSavedDesigns(next);
-    setDraft(createDesignDraftFromSaved(config));
-    setErrors({});
-    setStatus({
-      tone: "success",
-      message: `Desain "${config.title}" tersimpan di browser ini.`,
-    });
+    setIsSaving(true);
+    setStatus(null);
+    try {
+      const wasUpdate = Boolean(draft.id && draft.id.startsWith("dsn-"));
+      const { design, syncCode: nextCode } = await saveDesignApi(draft);
+      if (nextCode) setSyncCode(nextCode);
+
+      setSavedDesigns((previous) => upsertSavedDesign(previous, design));
+      setDraft(createDesignDraftFromSaved(design));
+      setErrors({});
+      setStatus({
+        tone: "success",
+        message: wasUpdate
+          ? `Perubahan desain "${design.title}" berhasil disimpan ke server Celmira.`
+          : `Desain "${design.title}" berhasil disimpan ke server Celmira dan siap digunakan di pesanan.`,
+      });
+    } catch (err) {
+      if (err instanceof StudioApiError && err.errors) {
+        setErrors(err.errors);
+      }
+      setStatus({
+        tone: "error",
+        message:
+          err instanceof Error ? err.message : "Gagal menyimpan desain ke server. Silakan coba lagi.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function handleLoad(config: DesignStudioSavedConfig) {
     setDraft(createDesignDraftFromSaved(config));
     setErrors({});
     setUploadError(null);
-    setStatus({ tone: "info", message: `Memuat desain "${config.title}".` });
+    setStatus({ tone: "info", message: `Memuat desain "${config.title}" untuk diedit.` });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleDelete(config: DesignStudioSavedConfig) {
-    if (!window.confirm(`Hapus desain "${config.title}" dari browser ini?`)) return;
+  async function handleDelete(config: DesignStudioSavedConfig) {
+    if (!window.confirm(`Hapus desain "${config.title}" dari daftar tersimpan?`)) return;
 
-    const next = removeSavedDesign(savedDesigns, config.id);
-    saveSavedDesigns(next);
-    setSavedDesigns(next);
+    try {
+      await deleteDesignApi(config.id);
+      setSavedDesigns((previous) => removeSavedDesign(previous, config.id));
 
-    if (draft.id === config.id) {
-      setDraft(createEmptyDesignDraft(draft.categoryId));
-      setErrors({});
+      if (draft.id === config.id) {
+        setDraft(createEmptyDesignDraft(draft.categoryId));
+        setErrors({});
+      }
+
+      setStatus({
+        tone: "info",
+        message: `Desain "${config.title}" telah dihapus. Pesanan lama yang menggunakan desain ini tetap aman.`,
+      });
+    } catch (err) {
+      setStatus({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Gagal menghapus desain di server.",
+      });
     }
-
-    setStatus({ tone: "info", message: "Desain dihapus dari browser ini." });
   }
 
   function handleNewDesign() {
@@ -219,22 +328,42 @@ export function DesignStudio() {
           <div className="flex max-w-2xl flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <p className="eyebrow">Design Studio</p>
-              <span className="rounded-full border border-cocoa/25 px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.16em] text-cocoa">
-                Tahap 2
+              <span className="rounded-full border border-cocoa/25 bg-cream/60 px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.16em] text-cocoa">
+                Tersinkronisasi Server (D1 &amp; R2)
               </span>
             </div>
             <h1 className="text-balance text-[2.2rem] leading-[1.1] text-espresso sm:text-[2.9rem]">
               Rancang busana, lihat perubahannya langsung.
             </h1>
             <p className="max-w-xl text-pretty text-sm leading-relaxed text-muted sm:text-[0.95rem]">
-              Pilih kategori, bahan, warna, dan detail jahit. Pratinjau di samping akan mengikuti
-              pilihan Anda. Simpan konfigurasi untuk diajukan bersama pesanan custom.
+              Pilih kategori, bahan, warna, dan detail jahit serta unggah gambar referensi.
+              Konfigurasi disimpan di server Celmira dan langsung terhubung ke halaman pemesanan
+              serta panel peninjauan admin.
             </p>
           </div>
 
-          <button className={buttonClass("outline", "w-fit shrink-0")} onClick={handleNewDesign} type="button">
+          <button
+            className={buttonClass("outline", "w-fit shrink-0 cursor-pointer")}
+            onClick={handleNewDesign}
+            type="button"
+          >
             Desain Baru
           </button>
+        </div>
+
+        <div className="mt-6">
+          <StudioSyncPanel
+            contextLabel="Design Studio"
+            onRestored={({ syncCode: restoredCode, designs }) => {
+              setSyncCode(restoredCode);
+              setSavedDesigns(designs);
+              setStatus({
+                tone: "success",
+                message: `Berhasil memuat ${designs.length} desain tersimpan dari server Celmira.`,
+              });
+            }}
+            syncCode={syncCode}
+          />
         </div>
       </section>
 
@@ -250,18 +379,30 @@ export function DesignStudio() {
               onChangeField={updateField}
               onChangeSpec={updateSpecification}
               onDragStateChange={setIsDragging}
-              onFilesSelected={handleFilesSelected}
+              onFilesSelected={(files) => void handleFilesSelected(files)}
               onRemoveAttachment={handleRemoveAttachment}
-              uploadError={uploadError}
+              uploadError={
+                isUploading ? "Mengunggah file referensi ke penyimpanan aman R2..." : uploadError
+              }
             />
 
             <div className="mt-6 flex flex-col gap-4 rounded-[1.5rem] border border-cocoa/15 bg-cream/45 p-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-md text-xs leading-relaxed text-muted">
-                Desain disimpan di browser perangkat ini, bukan di server Celmira. Anda dapat
-                memuatnya kembali kapan saja dari daftar desain tersimpan.
+                Desain dan lampiran referensi disimpan ke database Cloudflare D1 &amp; penyimpanan
+                privat R2 sehingga dapat dibuka kembali dari perangkat lain dan ditinjau langsung
+                oleh admin saat pesanan diajukan.
               </p>
-              <button className={buttonClass("solid", "w-fit shrink-0")} onClick={handleSave} type="button">
-                Simpan Desain
+              <button
+                className={buttonClass("solid", "w-fit shrink-0 cursor-pointer")}
+                disabled={isSaving || isUploading}
+                onClick={() => void handleSave()}
+                type="button"
+              >
+                {isSaving
+                  ? "Menyimpan..."
+                  : draft.id
+                    ? "Simpan Perubahan Desain"
+                    : "Simpan Desain"}
                 <CheckIcon className="h-4 w-4" />
               </button>
             </div>
@@ -363,7 +504,7 @@ export function DesignStudio() {
         <section aria-labelledby="saved-designs-title" className="mt-14">
           <div className="flex flex-col gap-3 border-t border-cocoa/12 pt-8 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-2">
-              <p className="eyebrow">Koleksi Lokal</p>
+              <p className="eyebrow">Koleksi Tersimpan di Server</p>
               <h2
                 className="text-balance text-[1.75rem] leading-[1.15] text-espresso sm:text-[2.1rem]"
                 id="saved-designs-title"
@@ -371,7 +512,8 @@ export function DesignStudio() {
                 Desain tersimpan
               </h2>
               <p className="max-w-xl text-sm leading-relaxed text-muted">
-                Konfigurasi tersimpan di browser ini dan dapat dipakai ulang di halaman pemesanan.
+                Konfigurasi tersimpan di backend Celmira dan dapat diedit ulang atau dipakai
+                langsung pada formulir pemesanan.
               </p>
             </div>
             <span className="w-fit rounded-full border border-cocoa/20 px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.16em] text-cocoa">
@@ -380,7 +522,7 @@ export function DesignStudio() {
           </div>
 
           {!hydrated ? (
-            <p className="mt-6 text-sm text-muted">Memuat desain tersimpan...</p>
+            <p className="mt-6 text-sm text-muted">Memuat desain tersimpan dari server...</p>
           ) : savedDesigns.length === 0 ? (
             <div className="mt-6 rounded-[1.5rem] border border-dashed border-cocoa/25 bg-cream/35 px-6 py-10 text-center">
               <p className="font-[family-name:var(--font-display)] text-lg text-espresso">
@@ -388,7 +530,7 @@ export function DesignStudio() {
               </p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
                 Lengkapi formulir di atas, lalu tekan “Simpan Desain”. Desain pertama Anda akan
-                muncul di sini.
+                tersimpan di server dan muncul di sini.
               </p>
             </div>
           ) : (
@@ -406,7 +548,9 @@ export function DesignStudio() {
                       <h3 className="mt-1 truncate font-[family-name:var(--font-display)] text-lg text-espresso">
                         {config.title}
                       </h3>
-                      <p className="mt-0.5 truncate text-xs text-muted">{config.modelName}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted">
+                        {config.modelName} · {config.specifications.fabric}
+                      </p>
                     </div>
                     <span
                       aria-hidden="true"
@@ -415,22 +559,43 @@ export function DesignStudio() {
                     />
                   </div>
 
+                  {config.attachments.some((att) => att.kind === "image" && att.url) ? (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {config.attachments
+                        .filter((att) => att.kind === "image" && att.url)
+                        .slice(0, 3)
+                        .map((att) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            alt={att.name}
+                            className="h-14 w-14 shrink-0 rounded-xl border border-cocoa/15 object-cover"
+                            key={att.id}
+                            src={att.url}
+                          />
+                        ))}
+                    </div>
+                  ) : null}
+
                   <p className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted">
                     Diperbarui {formatSavedDate(config.updatedAt)} · {config.attachments.length}{" "}
                     lampiran
                   </p>
 
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-                    <button className={smallAction} onClick={() => handleLoad(config)} type="button">
-                      Muat
+                    <button
+                      className={smallAction}
+                      onClick={() => handleLoad(config)}
+                      type="button"
+                    >
+                      Edit / Muat
                     </button>
                     <Link className={smallPrimary} href={buildDesignOrderHref(config.id)}>
                       Gunakan
                     </Link>
                     <button
                       aria-label={`Hapus ${config.title}`}
-                      className="ml-auto rounded-full border border-cocoa/15 p-2 text-cocoa transition-colors hover:border-rose/60 hover:text-rose"
-                      onClick={() => handleDelete(config)}
+                      className="ml-auto cursor-pointer rounded-full border border-cocoa/15 p-2 text-cocoa transition-colors hover:border-rose/60 hover:text-rose"
+                      onClick={() => void handleDelete(config)}
                       type="button"
                     >
                       <TrashIcon className="h-4 w-4" />

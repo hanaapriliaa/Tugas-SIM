@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { MannequinPreview } from "@/components/measurement-studio/MannequinPreview";
+import { StudioSyncPanel } from "@/components/studio/StudioSyncPanel";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { buildChatHref } from "@/lib/chat";
@@ -13,24 +14,39 @@ import {
   summarizeMeasurementProfile,
 } from "@/lib/measurement-studio";
 import type {
+  DesignStudioSavedConfig,
   MeasurementProfile,
   MeasurementTemplateConfig,
 } from "@/lib/types/tailor";
 
 type SavedProfileViewProps = {
   profile: MeasurementProfile;
+  profiles: MeasurementProfile[];
   templates: MeasurementTemplateConfig[];
+  syncCode: string | null;
   statusMessage?: string | null;
+  onSelectProfile: (profile: MeasurementProfile) => void;
+  onCreateNewProfile: () => void;
   onEditProfile: (profile: MeasurementProfile) => void;
   onDeleteProfile: (profile: MeasurementProfile) => void;
+  onRestoredSession: (payload: {
+    syncCode: string;
+    designs: DesignStudioSavedConfig[];
+    profiles: MeasurementProfile[];
+  }) => void;
 };
 
 export function SavedProfileView({
   profile,
+  profiles,
   templates,
+  syncCode,
   statusMessage,
+  onSelectProfile,
+  onCreateNewProfile,
   onEditProfile,
   onDeleteProfile,
+  onRestoredSession,
 }: SavedProfileViewProps) {
   const activeTemplate = getMeasurementTemplateById(profile.templateId, templates);
   const measurementRows = summarizeMeasurementProfile(profile, templates);
@@ -39,22 +55,67 @@ export function SavedProfileView({
     <div className="shell pb-16 pt-10 sm:pb-20 sm:pt-14">
       <div className="mx-auto max-w-4xl">
         {/* Header Profil Ukuran Tersimpan */}
-        <div className="flex flex-col gap-3 pb-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="eyebrow">Profil Ukuran Tersimpan</p>
-            <span className="inline-flex items-center gap-1 rounded-full bg-espresso px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-ivory">
-              <CheckIcon className="h-3.5 w-3.5" />
-              Siap Digunakan
-            </span>
+        <div className="flex flex-col gap-4 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="eyebrow">Profil Ukuran Tersimpan</p>
+              <span className="inline-flex items-center gap-1 rounded-full bg-espresso px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-ivory">
+                <CheckIcon className="h-3.5 w-3.5" />
+                Tersinkronisasi Server
+              </span>
+            </div>
+            <h1 className="text-balance text-[2rem] leading-[1.12] text-espresso sm:text-[2.6rem]">
+              {profile.label}
+            </h1>
+            <p className="max-w-xl text-sm leading-relaxed text-muted">
+              Profil ukuran Anda tersimpan di database server Celmira dan dapat langsung dipakai
+              kembali untuk pesanan baru.
+            </p>
           </div>
-          <h1 className="text-balance text-[2rem] leading-[1.12] text-espresso sm:text-[2.6rem]">
-            {profile.label}
-          </h1>
-          <p className="max-w-xl text-sm leading-relaxed text-muted">
-            Profil ukuran Anda tersimpan di perangkat ini dan dapat langsung diterapkan ke formulir
-            pemesanan Celmira Tailor.
-          </p>
+
+          <button
+            className={buttonClass("outline", "w-fit shrink-0 cursor-pointer")}
+            onClick={onCreateNewProfile}
+            type="button"
+          >
+            + Buat Profil Baru
+          </button>
         </div>
+
+        <div className="mb-6">
+          <StudioSyncPanel
+            contextLabel="Measurement Studio"
+            onRestored={onRestoredSession}
+            syncCode={syncCode}
+          />
+        </div>
+
+        {profiles.length > 1 ? (
+          <div className="mb-6 rounded-2xl border border-cocoa/14 bg-ivory p-4">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-cocoa">
+              Daftar Profil Tersimpan ({profiles.length})
+            </p>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {profiles.map((item) => {
+                const isSelected = item.id === profile.id;
+                return (
+                  <button
+                    className={`cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                      isSelected
+                        ? "border-espresso bg-espresso text-ivory"
+                        : "border-cocoa/20 bg-cream/40 text-espresso hover:border-espresso"
+                    }`}
+                    key={item.id}
+                    onClick={() => onSelectProfile(item)}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {statusMessage ? (
           <p
@@ -65,7 +126,7 @@ export function SavedProfileView({
           </p>
         ) : null}
 
-        {/* Kartu Ringkasan Profil Tunggal */}
+        {/* Kartu Ringkasan Profil Aktif */}
         <section className="rounded-[2rem] border border-cocoa/15 bg-cream/55 p-6 sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_15.5rem] lg:items-start">
             {/* Detail Profil & Ukuran */}
@@ -123,7 +184,7 @@ export function SavedProfileView({
                 </div>
               ) : null}
 
-              {/* Dua Tombol Utama */}
+              {/* Tombol Utama */}
               <div className="flex flex-col gap-3 border-t border-cocoa/12 pt-5 sm:flex-row sm:items-center">
                 <ButtonLink
                   className="w-full sm:w-auto"
@@ -172,10 +233,10 @@ export function SavedProfileView({
 
           <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-cocoa/12 bg-ivory/80 p-4 text-xs leading-relaxed text-muted sm:flex-row sm:items-center sm:justify-between">
             <p className="max-w-2xl">
-              <strong className="font-semibold text-espresso">Catatan atelier:</strong> Saat Anda
-              menekan <em>“Gunakan untuk Pesanan”</em>, kategori pakaian, seluruh ukuran (cm), dan
-              catatan profil akan langsung terpasang di formulir pemesanan. Tim produksi Celmira tetap
-              meninjau kesesuaian ukuran sebelum pemotongan bahan.
+              <strong className="font-semibold text-espresso">Perlindungan snapshot pesanan:</strong>{" "}
+              Saat Anda mengajukan pesanan, angka ukuran dikunci sebagai snapshot khusus pesanan
+              tersebut. Memperbarui profil ini nanti tidak akan mengubah ukuran pada pesanan yang
+              sudah diajukan.
             </p>
             <Link
               className="inline-flex shrink-0 items-center gap-1.5 font-medium text-cocoa underline underline-offset-4 transition-colors hover:text-espresso"

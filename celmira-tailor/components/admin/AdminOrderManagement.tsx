@@ -24,6 +24,7 @@ import {
 import { formatFileSize } from "@/lib/attachments";
 import { validateAttachmentFile } from "@/lib/booking-validation";
 import { startChatRealtime } from "@/lib/chat-realtime";
+import { getMeasurementTemplateById } from "@/lib/measurement-studio";
 import {
   ORDER_STATUS_META,
   PRODUCTION_STAGES,
@@ -944,6 +945,243 @@ export function AdminOrderManagement({
                     </dd>
                   </div>
                 </dl>
+
+                {/* Detail Desain, Referensi Visual (R2), & Snapshot Ukuran Terkunci */}
+                <div className="mt-5 grid gap-4 border-t border-cocoa/12 pt-5 lg:grid-cols-2">
+                  {/* Panel Desain & Spesifikasi */}
+                  <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cocoa/10 pb-2.5">
+                      <div>
+                        <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                          Desain Pilihan Pelanggan
+                        </p>
+                        <p className="mt-0.5 text-sm font-semibold text-espresso">
+                          {selectedOrder.designTitle}
+                          {selectedOrder.designModelName
+                            ? ` (${selectedOrder.designModelName})`
+                            : ""}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-cocoa/20 bg-cream px-2.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-cocoa">
+                        {selectedOrder.designSource === "design-studio"
+                          ? "Design Studio"
+                          : selectedOrder.designSource === "celmira"
+                            ? "Desain Celmira"
+                            : "Upload Custom"}
+                      </span>
+                    </div>
+
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                      <div>
+                        <dt className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                          Bahan
+                        </dt>
+                        <dd className="font-medium text-espresso">
+                          {selectedOrder.specifications.fabric}
+                          {selectedOrder.specifications.customFabricNote
+                            ? ` (${selectedOrder.specifications.customFabricNote})`
+                            : ""}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                          Warna
+                        </dt>
+                        <dd className="flex items-center gap-1.5 font-medium text-espresso">
+                          <span
+                            className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-cocoa/25"
+                            style={{ backgroundColor: selectedOrder.specifications.colorHex }}
+                          />
+                          {selectedOrder.specifications.colorName}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                          Lengan &amp; Kerah
+                        </dt>
+                        <dd className="text-espresso">
+                          {selectedOrder.specifications.sleeveStyle} ·{" "}
+                          {selectedOrder.specifications.collarStyle}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                          Panjang
+                        </dt>
+                        <dd className="text-espresso">
+                          {selectedOrder.specifications.lengthOption}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                          Renda &amp; Bordir
+                        </dt>
+                        <dd className="text-espresso">
+                          {selectedOrder.specifications.laceDetail} ·{" "}
+                          {selectedOrder.specifications.embroideryDetail}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                          Kancing &amp; Resleting
+                        </dt>
+                        <dd className="text-espresso">
+                          {selectedOrder.specifications.buttonStyle} ·{" "}
+                          {selectedOrder.specifications.zipperStyle}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {selectedOrder.specifications.notes ? (
+                      <p className="mt-3 rounded-xl bg-cream/60 p-2.5 text-espresso">
+                        <span className="font-semibold text-cocoa">Catatan desain: </span>
+                        {selectedOrder.specifications.notes}
+                      </p>
+                    ) : null}
+
+                    {/* Referensi Visual / Lampiran R2 */}
+                    <div className="mt-3 border-t border-cocoa/10 pt-3">
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-cocoa">
+                        Lampiran Referensi ({selectedOrder.attachments.length})
+                      </p>
+                      {selectedOrder.attachments.length === 0 ? (
+                        <p className="mt-1 text-muted">Tidak ada lampiran visual.</p>
+                      ) : (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {selectedOrder.attachments.map((att) => {
+                            const src = att.url ?? att.previewDataUrl;
+                            return (
+                              <div
+                                className="flex items-center gap-2.5 rounded-xl border border-cocoa/12 bg-cream/40 p-2"
+                                key={att.id}
+                              >
+                                {att.kind === "image" && src ? (
+                                  <a
+                                    className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-cocoa/15 bg-ivory"
+                                    href={src}
+                                    rel="noreferrer"
+                                    target="_blank"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      alt={att.name}
+                                      className="h-full w-full object-cover"
+                                      src={src}
+                                    />
+                                  </a>
+                                ) : (
+                                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-cocoa/15 bg-ivory text-cocoa">
+                                    <FileTextIcon className="h-5 w-5" />
+                                  </span>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-medium text-espresso">{att.name}</p>
+                                  <p className="text-[0.625rem] text-muted">
+                                    {formatFileSize(att.size)}
+                                  </p>
+                                  {src ? (
+                                    <a
+                                      className="text-[0.6875rem] font-medium text-cocoa underline underline-offset-2 hover:text-espresso"
+                                      href={src}
+                                      rel="noreferrer"
+                                      target="_blank"
+                                    >
+                                      Buka file
+                                    </a>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Panel Snapshot Ukuran Pesanan */}
+                  <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cocoa/10 pb-2.5">
+                      <div>
+                        <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                          Snapshot Ukuran Pesanan
+                        </p>
+                        <p className="mt-0.5 text-sm font-semibold text-espresso">
+                          {selectedOrder.measurements.mode === "sample_garment"
+                            ? "Replikasi Baju Contoh"
+                            : selectedOrder.measurements.mode === "profile"
+                              ? selectedOrder.measurements.profileName || "Profil Measurement Studio"
+                              : "Input Ukuran Manual"}
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-cocoa/20 bg-cream px-2.5 py-0.5 text-[0.625rem] font-medium text-cocoa">
+                        <LockIcon className="h-3 w-3" />
+                        Terkunci saat order
+                      </span>
+                    </div>
+
+                    {selectedOrder.measurements.mode === "sample_garment" ? (
+                      <p className="mt-3 leading-relaxed text-espresso">
+                        {selectedOrder.measurements.sampleGarmentNote ||
+                          "Pelanggan memilih metode replikasi baju contoh."}
+                      </p>
+                    ) : (
+                      <>
+                        {selectedOrder.measurements.templateId ? (
+                          <p className="mt-2.5 text-[0.6875rem] text-muted">
+                            Template:{" "}
+                            <strong className="text-espresso">
+                              {
+                                getMeasurementTemplateById(selectedOrder.measurements.templateId)
+                                  .name
+                              }
+                            </strong>
+                          </p>
+                        ) : null}
+                        <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {(
+                            [
+                              ["Lingkar badan", selectedOrder.measurements.values.bust],
+                              ["Lingkar pinggang", selectedOrder.measurements.values.waist],
+                              ["Lingkar panggul", selectedOrder.measurements.values.hip],
+                              ["Lebar bahu", selectedOrder.measurements.values.shoulderWidth],
+                              ["Panjang lengan", selectedOrder.measurements.values.sleeveLength],
+                              ["Panjang busana", selectedOrder.measurements.values.garmentLength],
+                              ["Lingkar leher", selectedOrder.measurements.values.neckCircumference],
+                              ...(selectedOrder.measurements.templateId &&
+                              selectedOrder.measurements.extraValues
+                                ? getMeasurementTemplateById(selectedOrder.measurements.templateId)
+                                    .fields.filter((f) => f.storageTarget === "extra")
+                                    .map((f): [string, string] => [
+                                      f.shortLabel,
+                                      selectedOrder.measurements.extraValues?.[f.key] ?? "",
+                                    ])
+                                : []),
+                            ] as Array<[string, string]>
+                          )
+                            .filter(([, val]) => val.trim().length > 0)
+                            .map(([label, val]) => (
+                              <div
+                                className="rounded-xl border border-cocoa/10 bg-cream/45 px-2.5 py-2"
+                                key={label}
+                              >
+                                <dt className="text-[0.625rem] uppercase tracking-[0.1em] text-muted">
+                                  {label}
+                                </dt>
+                                <dd className="mt-0.5 font-semibold text-espresso">{val} cm</dd>
+                              </div>
+                            ))}
+                        </dl>
+                      </>
+                    )}
+
+                    {selectedOrder.measurements.fitPreferenceNote ? (
+                      <p className="mt-3 rounded-xl bg-cream/60 p-2.5 text-espresso">
+                        <span className="font-semibold text-cocoa">Preferensi fitting: </span>
+                        {selectedOrder.measurements.fitPreferenceNote}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
               </section>
 
               {/* 2. Penawaran Harga Akhir */}

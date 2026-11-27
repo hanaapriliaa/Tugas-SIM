@@ -79,12 +79,12 @@ function AttachmentRow({
   return (
     <li className="flex items-center gap-3 rounded-xl border border-cocoa/12 bg-ivory/80 p-3">
       <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sand/40 text-cocoa">
-        {attachment.kind === "image" && attachment.previewDataUrl ? (
+        {attachment.kind === "image" && (attachment.url || attachment.previewDataUrl) ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            alt=""
+            alt={attachment.name}
             className="h-full w-full object-cover"
-            src={attachment.previewDataUrl}
+            src={attachment.url ?? attachment.previewDataUrl}
           />
         ) : (
           <FileTextIcon className="h-5 w-5" />

@@ -9,6 +9,7 @@ import {
   type MeasurementStudioStep,
 } from "@/components/measurement-studio/MeasurementStudioForm";
 import { SavedProfileView } from "@/components/measurement-studio/SavedProfileView";
+import { StudioSyncPanel } from "@/components/studio/StudioSyncPanel";
 import { buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
@@ -18,26 +19,29 @@ import {
   applySizePresetToDraft,
   createMeasurementDraftForTemplate,
   createMeasurementDraftFromProfile,
-  createSavedMeasurementProfile,
   getDefaultTemplateForCategory,
   getMeasurementGarmentTypeById,
   getMeasurementTemplateById,
   getTemplateFieldValue,
   isMeasurementTemplateId,
+  removeMeasurementProfile,
   resolveMeasurementGarmentType,
   setTemplateFieldValue,
   summarizeMeasurementProfile,
   switchDraftTemplate,
+  upsertMeasurementProfile,
   validateMeasurementDraft,
   validateMeasurementField,
   type MeasurementGarmentTypeOption,
   type MeasurementStudioDraft,
 } from "@/lib/measurement-studio";
 import {
-  loadMeasurementProfiles,
-  loadMeasurementTemplates,
-  saveMeasurementProfiles,
-} from "@/lib/storage/tailor-store";
+  StudioApiError,
+  deleteMeasurementProfileApi,
+  fetchMeasurementProfilesApi,
+  saveMeasurementProfileApi,
+} from "@/lib/studio-client";
+import { loadMeasurementTemplates } from "@/lib/storage/tailor-store";
 import type {
   GarmentCategoryId,
   MeasurementProfile,
@@ -78,7 +82,10 @@ export function MeasurementStudio() {
   );
   const [view, setView] = useState<StudioView>("editor");
   const [currentStep, setCurrentStep] = useState<MeasurementStudioStep>(1);
+  const [savedProfiles, setSavedProfiles] = useState<MeasurementProfile[]>([]);
   const [savedProfile, setSavedProfile] = useState<MeasurementProfile | null>(null);
+  const [syncCode, setSyncCode] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     DEFAULT_MEASUREMENT_TEMPLATES.find((item) => item.id === "gamis")?.fields[0]?.key ?? null
   );
@@ -86,71 +93,97 @@ export function MeasurementStudio() {
   const [status, setStatus] = useState<StatusMessage | null>(null);
 
   useEffect(() => {
+    let active = true;
     const loadedTemplates = loadMeasurementTemplates();
-    const storedProfiles = loadMeasurementProfiles();
-    const primarySaved = storedProfiles[0] ?? null;
     setTemplates(loadedTemplates);
-    setSavedProfile(primarySaved);
 
-    const urlParams =
-      typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const getParam = (key: string) => searchParams.get(key) ?? urlParams?.get(key) ?? null;
-
-    const profileParam = getParam("profile");
-    const templateParam = getParam("template");
-    const categoryParam = getParam("category");
-    const viewParam = getParam("view");
-
-    let nextDraft: MeasurementStudioDraft | null = null;
-    let initialStep: MeasurementStudioStep = 1;
-
-    if (profileParam) {
-      const matched = storedProfiles.find((item) => item.id === profileParam) ?? primarySaved;
-      if (matched) {
-        nextDraft = createMeasurementDraftFromProfile(matched, loadedTemplates);
-        setSavedProfile(matched);
-        initialStep = 2;
-        setView("editor");
+    async function bootstrap() {
+      let storedProfiles: MeasurementProfile[] = [];
+      try {
+        const res = await fetchMeasurementProfilesApi();
+        if (!active) return;
+        storedProfiles = res.profiles;
+        setSavedProfiles(res.profiles);
+        setSyncCode(res.syncCode);
+      } catch (err) {
+        if (!active) return;
         setStatus({
-          tone: "info",
-          message: `Memuat profil "${matched.label}" untuk diperbarui.`,
+          tone: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Gagal memuat profil ukuran tersimpan dari server.",
         });
+      }
+
+      const primarySaved = storedProfiles[0] ?? null;
+      setSavedProfile(primarySaved);
+
+      const urlParams =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const getParam = (key: string) => searchParams.get(key) ?? urlParams?.get(key) ?? null;
+
+      const profileParam = getParam("profile");
+      const templateParam = getParam("template");
+      const categoryParam = getParam("category");
+      const viewParam = getParam("view");
+
+      let nextDraft: MeasurementStudioDraft | null = null;
+      let initialStep: MeasurementStudioStep = 1;
+
+      if (profileParam) {
+        const matched = storedProfiles.find((item) => item.id === profileParam) ?? primarySaved;
+        if (matched) {
+          nextDraft = createMeasurementDraftFromProfile(matched, loadedTemplates);
+          setSavedProfile(matched);
+          initialStep = 2;
+          setView("editor");
+          setStatus({
+            tone: "info",
+            message: `Memuat profil "${matched.label}" untuk diperbarui.`,
+          });
+        }
+      }
+
+      if (!nextDraft && viewParam === "saved" && primarySaved) {
+        setView("saved");
+      }
+
+      if (!nextDraft && templateParam && isMeasurementTemplateId(templateParam)) {
+        nextDraft = createMeasurementDraftForTemplate(templateParam, loadedTemplates);
+        initialStep = 2;
+      }
+
+      if (
+        !nextDraft &&
+        categoryParam &&
+        garmentCategories.some((category) => category.id === categoryParam)
+      ) {
+        const mappedTemplate = getDefaultTemplateForCategory(categoryParam as GarmentCategoryId);
+        const resolvedType = resolveMeasurementGarmentType(
+          mappedTemplate,
+          categoryParam as GarmentCategoryId
+        );
+        nextDraft = {
+          ...createMeasurementDraftForTemplate(mappedTemplate, loadedTemplates),
+          garmentTypeId: resolvedType.id,
+          categoryHint: categoryParam as GarmentCategoryId,
+        };
+        initialStep = 2;
+      }
+
+      if (nextDraft) {
+        setDraft(nextDraft);
+        setCurrentStep(initialStep);
+        const nextTemplate = getMeasurementTemplateById(nextDraft.templateId, loadedTemplates);
+        setActiveFieldKey(nextTemplate.fields[0]?.key ?? null);
       }
     }
 
-    if (!nextDraft && viewParam === "saved" && primarySaved) {
-      setView("saved");
-    }
-
-    if (!nextDraft && templateParam && isMeasurementTemplateId(templateParam)) {
-      nextDraft = createMeasurementDraftForTemplate(templateParam, loadedTemplates);
-      initialStep = 2;
-    }
-
-    if (
-      !nextDraft &&
-      categoryParam &&
-      garmentCategories.some((category) => category.id === categoryParam)
-    ) {
-      const mappedTemplate = getDefaultTemplateForCategory(categoryParam as GarmentCategoryId);
-      const resolvedType = resolveMeasurementGarmentType(
-        mappedTemplate,
-        categoryParam as GarmentCategoryId
-      );
-      nextDraft = {
-        ...createMeasurementDraftForTemplate(mappedTemplate, loadedTemplates),
-        garmentTypeId: resolvedType.id,
-        categoryHint: categoryParam as GarmentCategoryId,
-      };
-      initialStep = 2;
-    }
-
-    if (nextDraft) {
-      setDraft(nextDraft);
-      setCurrentStep(initialStep);
-      const nextTemplate = getMeasurementTemplateById(nextDraft.templateId, loadedTemplates);
-      setActiveFieldKey(nextTemplate.fields[0]?.key ?? null);
-    }
+    void bootstrap();
+    return () => {
+      active = false;
+    };
     // Query dibaca saat pertama dibuka agar perubahan pengguna tidak ter-reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -283,7 +316,7 @@ export function MeasurementStudio() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleSaveProfile() {
+  async function handleSaveProfile() {
     const validation = validateMeasurementDraft(draft, templates);
     if (!validation.valid) {
       setErrors(validation.errors);
@@ -300,23 +333,50 @@ export function MeasurementStudio() {
       return;
     }
 
-    // Satu profil aktif & satu proses penyimpanan yang konsisten.
-    const profile = createSavedMeasurementProfile(
-      {
-        ...draft,
-        id: draft.id ?? savedProfile?.id ?? null,
-      },
-      templates
-    );
-    saveMeasurementProfiles([profile]);
-    setSavedProfile(profile);
-    setDraft(createMeasurementDraftFromProfile(profile, templates));
+    setIsSaving(true);
+    setStatus(null);
+    try {
+      const wasUpdate = Boolean(draft.id && draft.id.startsWith("mprof-"));
+      const { profile, syncCode: nextCode } = await saveMeasurementProfileApi(draft);
+      if (nextCode) setSyncCode(nextCode);
+
+      setSavedProfiles((previous) => upsertMeasurementProfile(previous, profile));
+      setSavedProfile(profile);
+      setDraft(createMeasurementDraftFromProfile(profile, templates));
+      setErrors({});
+      setStatus({
+        tone: "success",
+        message: wasUpdate
+          ? `Profil ukuran "${profile.label}" berhasil diperbarui di server. Snapshot ukuran pada pesanan lama tetap terjaga.`
+          : `Profil ukuran "${profile.label}" berhasil disimpan ke server dan siap digunakan untuk pesanan.`,
+      });
+      setView("saved");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      if (err instanceof StudioApiError && err.errors) {
+        setErrors(err.errors);
+      }
+      setStatus({
+        tone: "error",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Gagal menyimpan profil ukuran ke server. Silakan coba lagi.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function handleCreateNewProfile() {
+    setDraft(createMeasurementDraftForTemplate(draft.templateId, templates));
     setErrors({});
+    setCurrentStep(1);
+    setView("editor");
     setStatus({
-      tone: "success",
-      message: `Profil ukuran "${profile.label}" berhasil disimpan dan siap digunakan untuk pesanan.`,
+      tone: "info",
+      message: "Siap membuat profil ukuran baru. Pilih jenis pakaian dan masukkan ukuran.",
     });
-    setView("saved");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -330,24 +390,57 @@ export function MeasurementStudio() {
     setErrors({});
     setStatus({
       tone: "info",
-      message: `Mengubah profil "${profile.label}". Seluruh data sebelumnya tetap terisi.`,
+      message: `Mengubah profil "${profile.label}". Pembaruan tidak akan mengubah ukuran pada pesanan yang sudah diajukan.`,
     });
     setView("editor");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleDeleteProfile(profile: MeasurementProfile) {
-    if (!window.confirm(`Hapus profil ukuran "${profile.label}" dari browser ini?`)) return;
+  async function handleDeleteProfile(profile: MeasurementProfile) {
+    if (!window.confirm(`Hapus profil ukuran "${profile.label}" dari daftar tersimpan?`)) return;
 
-    saveMeasurementProfiles([]);
-    setSavedProfile(null);
-    setDraft(createMeasurementDraftForTemplate(draft.templateId, templates));
-    setErrors({});
-    setCurrentStep(1);
-    setView("editor");
+    try {
+      await deleteMeasurementProfileApi(profile.id);
+      const nextList = removeMeasurementProfile(savedProfiles, profile.id);
+      setSavedProfiles(nextList);
+      const nextPrimary = nextList[0] ?? null;
+      setSavedProfile(nextPrimary);
+      if (nextPrimary) {
+        setDraft(createMeasurementDraftFromProfile(nextPrimary, templates));
+        setView("saved");
+      } else {
+        setDraft(createMeasurementDraftForTemplate(draft.templateId, templates));
+        setCurrentStep(1);
+        setView("editor");
+      }
+      setErrors({});
+      setStatus({
+        tone: "info",
+        message: `Profil "${profile.label}" dihapus. Snapshot ukuran pada pesanan lama tetap tersimpan.`,
+      });
+    } catch (err) {
+      setStatus({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Gagal menghapus profil ukuran di server.",
+      });
+    }
+  }
+
+  function handleRestoredStudioSession(payload: {
+    syncCode: string;
+    profiles: MeasurementProfile[];
+  }) {
+    setSyncCode(payload.syncCode);
+    setSavedProfiles(payload.profiles);
+    const first = payload.profiles[0] ?? null;
+    setSavedProfile(first);
+    if (first) {
+      setDraft(createMeasurementDraftFromProfile(first, templates));
+      setView("saved");
+    }
     setStatus({
-      tone: "info",
-      message: `Profil "${profile.label}" dihapus. Silakan buat profil ukuran kembali.`,
+      tone: "success",
+      message: `Berhasil memuat ${payload.profiles.length} profil ukuran tersimpan dari server Celmira.`,
     });
   }
 
@@ -357,10 +450,19 @@ export function MeasurementStudio() {
   if (view === "saved" && savedProfile) {
     return (
       <SavedProfileView
-        onDeleteProfile={handleDeleteProfile}
+        onCreateNewProfile={handleCreateNewProfile}
+        onDeleteProfile={(p) => void handleDeleteProfile(p)}
         onEditProfile={handleEditSavedProfile}
+        onRestoredSession={handleRestoredStudioSession}
+        onSelectProfile={(p) => {
+          setSavedProfile(p);
+          setDraft(createMeasurementDraftFromProfile(p, templates));
+          setStatus(null);
+        }}
         profile={savedProfile}
+        profiles={savedProfiles}
         statusMessage={status?.message ?? null}
+        syncCode={syncCode}
         templates={templates}
       />
     );
@@ -409,9 +511,17 @@ export function MeasurementStudio() {
               }}
               type="button"
             >
-              Lihat Profil Tersimpan
+              Lihat Profil Tersimpan ({savedProfiles.length})
             </button>
           ) : null}
+        </div>
+
+        <div className="mt-6">
+          <StudioSyncPanel
+            contextLabel="Measurement Studio"
+            onRestored={handleRestoredStudioSession}
+            syncCode={syncCode}
+          />
         </div>
       </section>
 
@@ -818,10 +928,15 @@ export function MeasurementStudio() {
 
                   <button
                     className={buttonClass("solid", "w-full cursor-pointer sm:w-fit")}
-                    onClick={handleSaveProfile}
+                    disabled={isSaving}
+                    onClick={() => void handleSaveProfile()}
                     type="button"
                   >
-                    Simpan Profil Ukuran
+                    {isSaving
+                      ? "Menyimpan..."
+                      : draft.id
+                        ? "Simpan Perubahan Profil"
+                        : "Simpan Profil Ukuran"}
                     <CheckIcon className="h-4 w-4" />
                   </button>
                 </div>

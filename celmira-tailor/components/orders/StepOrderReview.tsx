@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { celmiraDesignReferences, getCategoryById } from "@/lib/booking-options";
 import { getMeasurementTemplateById } from "@/lib/measurement-studio";
 import type { DesignStudioSavedConfig, OrderDraft } from "@/lib/types/tailor";
@@ -300,8 +301,16 @@ export function StepOrderReview({
             type="checkbox"
           />
           <span>
-            Saya telah memeriksa seluruh detail pesanan di atas dan memahami alur penawaran, DP 50%
-            (verifikasi manual), serta pelunasan terpisah dengan biaya pengiriman.
+            Saya telah memeriksa seluruh detail pesanan di atas dan memahami{" "}
+            <Link className="underline underline-offset-4 hover:text-cocoa" href="/syarat-ketentuan">
+              Syarat &amp; Ketentuan
+            </Link>{" "}
+            serta{" "}
+            <Link className="underline underline-offset-4 hover:text-cocoa" href="/kebijakan-privasi">
+              Kebijakan Privasi
+            </Link>{" "}
+            Celmira Tailor (alur penawaran, DP 50% verifikasi manual, dan pelunasan terpisah dengan
+            biaya pengiriman).
           </span>
         </label>
         {errors.agreedToTerms ? (

@@ -362,6 +362,11 @@ export function StepCategoryDesign({
                         {item.modelName} · {item.specifications.fabric} ·{" "}
                         {item.specifications.colorName}
                       </p>
+                      {item.attachments.length > 0 ? (
+                        <p className="mt-1 text-[0.6875rem] text-cocoa">
+                          {item.attachments.length} file referensi terlampir (otomatis terbawa)
+                        </p>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -435,11 +440,11 @@ export function StepCategoryDesign({
                   key={file.id}
                 >
                   <div className="flex items-center gap-3 sm:min-w-0 sm:flex-1">
-                    {file.kind === "image" && file.previewDataUrl ? (
+                    {file.kind === "image" && (file.url || file.previewDataUrl) ? (
                       <img
                         alt={`Pratinjau ${file.name}`}
                         className="h-14 w-14 shrink-0 rounded-xl border border-cocoa/15 object-cover"
-                        src={file.previewDataUrl}
+                        src={file.url ?? file.previewDataUrl}
                       />
                     ) : (
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-cocoa/15 bg-cream text-cocoa">

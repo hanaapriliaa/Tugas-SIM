@@ -23,10 +23,11 @@ export const site = {
 
 export const navigation = [
   { label: "Beranda", href: "/" },
+  { label: "Layanan", href: "/layanan" },
   { label: "Katalog Jahit", href: "/catalog" },
-  { label: "Cara Pemesanan", href: "/#cara-pemesanan" },
-  { label: "Portofolio", href: "/#portofolio" },
-  { label: "Tentang Kami", href: "/#tentang" },
+  { label: "Cara Pemesanan", href: "/cara-pemesanan" },
+  { label: "Tentang Kami", href: "/tentang-kami" },
+  { label: "Kontak", href: "/kontak" },
 ] as const;
 
 export const studioNavigation = [
@@ -34,4 +35,16 @@ export const studioNavigation = [
   { label: "Measurement Studio", href: "/measurement-studio" },
   { label: "Lacak Pesanan", href: "/track" },
   { label: "Chat", href: "/chat" },
+] as const;
+
+export const infoNavigation = [
+  { label: "Tentang Kami", href: "/tentang-kami" },
+  { label: "Informasi Layanan", href: "/layanan" },
+  { label: "Cara Pemesanan", href: "/cara-pemesanan" },
+  { label: "Kontak & Lokasi", href: "/kontak" },
+] as const;
+
+export const legalNavigation = [
+  { label: "Kebijakan Privasi", href: "/kebijakan-privasi" },
+  { label: "Syarat & Ketentuan", href: "/syarat-ketentuan" },
 ] as const;

@@ -136,6 +136,7 @@ export async function createOrderInDb(
     draft: OrderDraft;
     customerSessionId: string | null;
     studioDesignTitle?: string;
+    studioDesignModelName?: string;
     storedAttachments?: ReferenceAttachment[];
     now?: Date;
   }
@@ -178,6 +179,13 @@ export async function createOrderInDb(
     })
   );
 
+  const designModelName =
+    draft.designSource === "design-studio"
+      ? params.studioDesignModelName?.trim() || undefined
+      : draft.designSource === "celmira"
+        ? celmiraRef?.subtitle || undefined
+        : undefined;
+
   const order: SubmittedOrder = {
     id,
     orderCode,
@@ -191,6 +199,7 @@ export async function createOrderInDb(
     categoryName,
     designSource: draft.designSource,
     designTitle,
+    designModelName,
     selectedCelmiraDesignId:
       draft.designSource === "celmira" ? draft.selectedCelmiraDesignId : undefined,
     selectedStudioDesignId:
@@ -203,6 +212,7 @@ export async function createOrderInDb(
       extraValues: draft.measurements.extraValues
         ? { ...draft.measurements.extraValues }
         : undefined,
+      snapshotTakenAt: timestamp,
     },
     customer: {
       fullName: draft.customer.fullName.trim(),

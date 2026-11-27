@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/icons";
 import { buildChatHref } from "@/lib/chat";
 import { startChatRealtime } from "@/lib/chat-realtime";
+import { getMeasurementTemplateById } from "@/lib/measurement-studio";
 import {
   ORDER_STATUS_META,
   createDefaultAdminPaymentConfig,
@@ -523,6 +524,99 @@ export function OrderTrackingWorkspace() {
                       ? "Menggunakan baju contoh"
                       : "Input ukuran manual"}
                 </p>
+              </div>
+            </div>
+
+            {/* Snapshot Ukuran Terkunci & Lampiran Referensi */}
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-cocoa/10 bg-ivory/85 p-4 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-cocoa">
+                    Snapshot Ukuran Pesanan (Terkunci)
+                  </span>
+                  {activeOrder.measurements.templateId ? (
+                    <span className="text-[0.625rem] text-muted">
+                      Template {getMeasurementTemplateById(activeOrder.measurements.templateId).shortLabel}
+                    </span>
+                  ) : null}
+                </div>
+                {activeOrder.measurements.mode === "sample_garment" ? (
+                  <p className="mt-2 text-espresso">
+                    {activeOrder.measurements.sampleGarmentNote || "Replikasi baju contoh."}
+                  </p>
+                ) : (
+                  <dl className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {(
+                      [
+                        ["Lingkar badan", activeOrder.measurements.values.bust],
+                        ["Lingkar pinggang", activeOrder.measurements.values.waist],
+                        ["Lingkar panggul", activeOrder.measurements.values.hip],
+                        ["Lebar bahu", activeOrder.measurements.values.shoulderWidth],
+                        ["Panjang lengan", activeOrder.measurements.values.sleeveLength],
+                        ["Panjang busana", activeOrder.measurements.values.garmentLength],
+                        ["Lingkar leher", activeOrder.measurements.values.neckCircumference],
+                        ...(activeOrder.measurements.templateId &&
+                        activeOrder.measurements.extraValues
+                          ? getMeasurementTemplateById(activeOrder.measurements.templateId)
+                              .fields.filter((f) => f.storageTarget === "extra")
+                              .map((f): [string, string] => [
+                                f.shortLabel,
+                                activeOrder.measurements.extraValues?.[f.key] ?? "",
+                              ])
+                          : []),
+                      ] as Array<[string, string]>
+                    )
+                      .filter(([, val]) => val.trim().length > 0)
+                      .map(([label, val]) => (
+                        <div className="rounded-xl border border-cocoa/10 bg-cream/40 px-2.5 py-1.5" key={label}>
+                          <dt className="text-[0.5625rem] uppercase tracking-[0.1em] text-muted">
+                            {label}
+                          </dt>
+                          <dd className="font-semibold text-espresso">{val} cm</dd>
+                        </div>
+                      ))}
+                  </dl>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-cocoa/10 bg-ivory/85 p-4 text-xs">
+                <span className="text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-cocoa">
+                  Referensi Desain ({activeOrder.attachments.length})
+                </span>
+                {activeOrder.designModelName ? (
+                  <p className="mt-1 text-muted">
+                    Model:{" "}
+                    <strong className="font-medium text-espresso">{activeOrder.designModelName}</strong>
+                  </p>
+                ) : null}
+                {activeOrder.attachments.length === 0 ? (
+                  <p className="mt-2 text-muted">Tidak ada file referensi terlampir.</p>
+                ) : (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {activeOrder.attachments.map((att) => {
+                      const src = att.url ?? att.previewDataUrl;
+                      return (
+                        <a
+                          className="inline-flex items-center gap-2 rounded-xl border border-cocoa/15 bg-cream/40 px-2.5 py-1.5 text-espresso transition-colors hover:border-espresso"
+                          href={src || "#"}
+                          key={att.id}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {att.kind === "image" && src ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              alt={att.name}
+                              className="h-7 w-7 rounded-md object-cover"
+                              src={src}
+                            />
+                          ) : null}
+                          <span className="max-w-[10rem] truncate font-medium">{att.name}</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </section>

@@ -25,11 +25,10 @@ import {
   validateStep5,
 } from "@/lib/booking-validation";
 import { OrdersApiError, submitOrderApi } from "@/lib/orders-client";
+import { fetchMeasurementProfilesApi, fetchSavedDesignsApi } from "@/lib/studio-client";
 import {
   clearBookingDraft,
   loadBookingDraft,
-  loadMeasurementProfiles,
-  loadSavedDesigns,
   saveBookingDraft,
   saveSubmittedOrder,
 } from "@/lib/storage/tailor-store";
@@ -64,94 +63,118 @@ export function CustomerBookingFlow() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedDraft = loadBookingDraft();
-    const designs = loadSavedDesigns();
-    const profiles = loadMeasurementProfiles();
+    let active = true;
 
-    const urlParams =
-      typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const getParam = (key: string) => searchParams.get(key) ?? urlParams?.get(key) ?? null;
+    async function bootstrap() {
+      const storedDraft = loadBookingDraft();
+      let designs: DesignStudioSavedConfig[] = [];
+      let profiles: MeasurementProfile[] = [];
 
-    const categoryParam = getParam("category") as GarmentCategoryId | null;
-    const celmiraDesignParam = getParam("celmiraDesignId");
-    const designParam = getParam("designId");
-    const measurementParam = getParam("measurementId");
+      try {
+        const [designsRes, profilesRes] = await Promise.all([
+          fetchSavedDesignsApi(),
+          fetchMeasurementProfilesApi(),
+        ]);
+        if (!active) return;
+        designs = designsRes.designs;
+        profiles = profilesRes.profiles;
+      } catch {
+        // Bila gagal memuat sementara, pengguna tetap dapat memilih desain Celmira / ukuran manual
+      }
 
-    let nextDraft = storedDraft;
+      if (!active) return;
 
-    if (categoryParam && getCategoryById(categoryParam)) {
-      nextDraft = {
-        ...nextDraft,
-        categoryId: categoryParam,
-      };
-    }
+      const urlParams =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const getParam = (key: string) => searchParams.get(key) ?? urlParams?.get(key) ?? null;
 
-    if (celmiraDesignParam) {
-      const celmiraDesign = celmiraDesignReferences.find(
-        (item) => item.id === celmiraDesignParam
-      );
-      if (celmiraDesign) {
+      const categoryParam = getParam("category") as GarmentCategoryId | null;
+      const celmiraDesignParam = getParam("celmiraDesignId");
+      const designParam = getParam("designId");
+      const measurementParam = getParam("measurementId");
+
+      let nextDraft = storedDraft;
+
+      if (categoryParam && getCategoryById(categoryParam)) {
         nextDraft = {
           ...nextDraft,
-          categoryId: celmiraDesign.categoryId,
-          designSource: "celmira",
-          selectedCelmiraDesignId: celmiraDesign.id,
-          specifications: {
-            ...nextDraft.specifications,
-            ...celmiraDesign.defaults,
-          },
+          categoryId: categoryParam,
         };
       }
-    }
 
-    if (designParam) {
-      const studioDesign = designs.find((item) => item.id === designParam);
-      if (studioDesign) {
-        nextDraft = {
-          ...nextDraft,
-          categoryId: studioDesign.categoryId,
-          designSource: "design-studio",
-          selectedStudioDesignId: studioDesign.id,
-          specifications: { ...studioDesign.specifications },
-        };
+      if (celmiraDesignParam) {
+        const celmiraDesign = celmiraDesignReferences.find(
+          (item) => item.id === celmiraDesignParam
+        );
+        if (celmiraDesign) {
+          nextDraft = {
+            ...nextDraft,
+            categoryId: celmiraDesign.categoryId,
+            designSource: "celmira",
+            selectedCelmiraDesignId: celmiraDesign.id,
+            specifications: {
+              ...nextDraft.specifications,
+              ...celmiraDesign.defaults,
+            },
+          };
+        }
       }
-    }
 
-    if (measurementParam) {
-      const profile = profiles.find((item) => item.id === measurementParam);
-      if (profile) {
-        const hasExistingDesignChoice =
-          Boolean(nextDraft.selectedCelmiraDesignId) ||
-          Boolean(nextDraft.selectedStudioDesignId) ||
-          nextDraft.attachments.length > 0;
-        const resolvedCategoryId =
-          (!hasExistingDesignChoice && profile.categoryHint) ||
-          nextDraft.categoryId ||
-          profile.categoryHint ||
-          "";
-
-        nextDraft = {
-          ...nextDraft,
-          categoryId: resolvedCategoryId,
-          measurements: {
-            ...nextDraft.measurements,
-            mode: "profile",
-            profileId: profile.id,
-            profileName: profile.label,
-            templateId: profile.templateId,
-            values: { ...profile.values },
-            extraValues: profile.extraValues ? { ...profile.extraValues } : undefined,
-            fitPreferenceNote:
-              nextDraft.measurements.fitPreferenceNote || profile.notes || "",
-          },
-        };
+      if (designParam) {
+        const studioDesign = designs.find((item) => item.id === designParam);
+        if (studioDesign) {
+          nextDraft = {
+            ...nextDraft,
+            categoryId: studioDesign.categoryId,
+            designSource: "design-studio",
+            selectedStudioDesignId: studioDesign.id,
+            specifications: { ...studioDesign.specifications },
+            attachments: studioDesign.attachments.map((att) => ({ ...att })),
+          };
+        }
       }
+
+      if (measurementParam) {
+        const profile = profiles.find((item) => item.id === measurementParam);
+        if (profile) {
+          const hasExistingDesignChoice =
+            Boolean(nextDraft.selectedCelmiraDesignId) ||
+            Boolean(nextDraft.selectedStudioDesignId) ||
+            nextDraft.attachments.length > 0;
+          const resolvedCategoryId =
+            (!hasExistingDesignChoice && profile.categoryHint) ||
+            nextDraft.categoryId ||
+            profile.categoryHint ||
+            "";
+
+          nextDraft = {
+            ...nextDraft,
+            categoryId: resolvedCategoryId,
+            measurements: {
+              ...nextDraft.measurements,
+              mode: "profile",
+              profileId: profile.id,
+              profileName: profile.label,
+              templateId: profile.templateId,
+              values: { ...profile.values },
+              extraValues: profile.extraValues ? { ...profile.extraValues } : undefined,
+              fitPreferenceNote:
+                nextDraft.measurements.fitPreferenceNote || profile.notes || "",
+            },
+          };
+        }
+      }
+
+      setSavedDesigns(designs);
+      setMeasurementProfiles(profiles);
+      setDraft(nextDraft);
+      setHydrated(true);
     }
 
-    setSavedDesigns(designs);
-    setMeasurementProfiles(profiles);
-    setDraft(nextDraft);
-    setHydrated(true);
+    void bootstrap();
+    return () => {
+      active = false;
+    };
   }, [searchParams]);
 
   useEffect(() => {
@@ -316,6 +339,7 @@ export function CustomerBookingFlow() {
       categoryId: design.categoryId,
       selectedStudioDesignId: design.id,
       specifications: { ...design.specifications },
+      attachments: design.attachments.map((att) => ({ ...att })),
     }));
   }
 

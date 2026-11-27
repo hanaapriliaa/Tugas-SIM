@@ -172,7 +172,7 @@ export async function getCustomerSession(
   if (!rawToken || rawToken.length < 32) return null;
 
   const tokenHash = await sha256Hex(rawToken);
-  const row = await db
+  let row = await db
     .prepare(
       `SELECT id, customer_name, customer_whatsapp_norm, created_at, last_seen_at
        FROM chat_customer_sessions
@@ -186,6 +186,34 @@ export async function getCustomerSession(
       created_at: string;
       last_seen_at: string;
     }>();
+
+  if (!row) {
+    try {
+      row = await db
+        .prepare(
+          `SELECT s.id, s.customer_name, s.customer_whatsapp_norm, s.created_at, s.last_seen_at
+           FROM customer_session_tokens t
+           INNER JOIN chat_customer_sessions s ON s.id = t.customer_session_id
+           WHERE t.token_hash = ?`
+        )
+        .bind(tokenHash)
+        .first<{
+          id: string;
+          customer_name: string | null;
+          customer_whatsapp_norm: string | null;
+          created_at: string;
+          last_seen_at: string;
+        }>();
+      if (row) {
+        await db
+          .prepare(`UPDATE customer_session_tokens SET last_seen_at = ? WHERE token_hash = ?`)
+          .bind(new Date().toISOString(), tokenHash)
+          .run();
+      }
+    } catch {
+      // Tabel customer_session_tokens mungkin belum dibuat pada test minimal Stage 5B-2.
+    }
+  }
 
   if (!row) return null;
 
@@ -243,6 +271,30 @@ export async function getOrCreateCustomerSession(
       secure: isSecureRequest(request),
     }),
   };
+}
+
+export async function issueAdditionalCustomerSessionCookie(
+  request: Request,
+  db: D1Database,
+  customerSessionId: string
+): Promise<string> {
+  const rawToken = generateOpaqueToken(32);
+  const tokenHash = await sha256Hex(rawToken);
+  const id = `cstok-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(
+      `INSERT INTO customer_session_tokens (id, customer_session_id, token_hash, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .bind(id, customerSessionId, tokenHash, now, now)
+    .run();
+
+  return buildSetCookieHeader(CUSTOMER_SESSION_COOKIE, rawToken, {
+    maxAge: CUSTOMER_COOKIE_MAX_AGE_SECONDS,
+    secure: isSecureRequest(request),
+  });
 }
 
 function extractBearerToken(request: Request, scheme: "Bearer" | "Customer"): string | null {

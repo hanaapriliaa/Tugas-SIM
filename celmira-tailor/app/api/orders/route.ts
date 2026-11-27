@@ -7,6 +7,8 @@ import {
   saveOrderInDb,
 } from "@/lib/server/order-repo";
 import { deleteOrderFile, storeOrderFile } from "@/lib/server/order-storage";
+import { getDesignByIdInDb } from "@/lib/server/studio-repo";
+import { extractStudioFileIdFromUrl, getStudioFileById } from "@/lib/server/studio-storage";
 import type { OrderDraft, ReferenceAttachment } from "@/lib/types/tailor";
 
 function decodeDataUrlToBytes(dataUrl: string): Uint8Array | null {
@@ -90,16 +92,58 @@ export async function POST(request: Request) {
     );
   }
 
+  // Resolusi data Design Studio dari D1 bila pesanan terhubung ke Design Studio
+  let resolvedStudioTitle = studioDesignTitle;
+  let resolvedStudioModelName: string | undefined;
+  let linkedStudioAttachments: ReferenceAttachment[] = [];
+
+  if (draft.designSource === "design-studio" && draft.selectedStudioDesignId) {
+    const foundDesign = await getDesignByIdInDb(env.DB, draft.selectedStudioDesignId);
+    if (foundDesign && foundDesign.customerSessionId === session.id) {
+      resolvedStudioTitle = resolvedStudioTitle || foundDesign.design.title;
+      resolvedStudioModelName = foundDesign.design.modelName;
+      linkedStudioAttachments = foundDesign.design.attachments;
+    }
+  }
+
   // Buat record order terlebih dahulu untuk mendapatkan order.id
   let order = await createOrderInDb(env.DB, {
     draft,
     customerSessionId: session.id,
-    studioDesignTitle,
+    studioDesignTitle: resolvedStudioTitle,
+    studioDesignModelName: resolvedStudioModelName,
     storedAttachments: [],
   });
 
   const storedAttachments: ReferenceAttachment[] = [];
   const uploadedFileIds: string[] = [];
+
+  async function copyStudioFileToOrder(att: ReferenceAttachment): Promise<ReferenceAttachment | null> {
+    const studioFileId = extractStudioFileIdFromUrl(att.url);
+    if (!studioFileId) return null;
+    const studioFile = await getStudioFileById(env.DB, studioFileId);
+    if (!studioFile || studioFile.customerSessionId !== session.id) return null;
+    const r2Obj = await env.CHAT_ATTACHMENTS.get(studioFile.r2Key);
+    if (!r2Obj) return null;
+    const bytes = new Uint8Array(await r2Obj.arrayBuffer());
+    const copied = await storeOrderFile(env.DB, env.CHAT_ATTACHMENTS, {
+      orderId: order.id,
+      kind: "order_reference",
+      fileName: studioFile.fileName,
+      bytes,
+    });
+    if (!copied.ok) return null;
+    uploadedFileIds.push(copied.file.id);
+    return {
+      id: copied.file.id,
+      name: copied.file.fileName,
+      size: copied.file.sizeBytes,
+      mimeType: copied.file.mimeType,
+      kind: copied.file.mimeType === "application/pdf" ? "pdf" : "image",
+      url: copied.file.url,
+      note: att.note,
+    };
+  }
 
   try {
     // 1. Jika ada file biner dari multipart/form-data
@@ -129,9 +173,28 @@ export async function POST(request: Request) {
       });
     }
 
-    // 2. Jika tidak ada multipart file, konversi lampiran previewDataUrl (jika ada) ke R2
-    if (multipartFiles.length === 0 && Array.isArray(draft.attachments)) {
-      for (const att of draft.attachments.slice(0, 6)) {
+    // 2. Gabungkan lampiran dari draft + Design Studio (hindari duplikat URL studio)
+    const combinedDraftAttachments: ReferenceAttachment[] = Array.isArray(draft.attachments)
+      ? [...draft.attachments]
+      : [];
+    const seenUrls = new Set(
+      combinedDraftAttachments.map((item) => item.url).filter((u): u is string => Boolean(u))
+    );
+    for (const studioAtt of linkedStudioAttachments) {
+      if (!studioAtt.url || !seenUrls.has(studioAtt.url)) {
+        combinedDraftAttachments.push(studioAtt);
+        if (studioAtt.url) seenUrls.add(studioAtt.url);
+      }
+    }
+
+    // 3. Salin file Design Studio (R2 -> order_files privat) atau konversi previewDataUrl ke R2
+    if (multipartFiles.length === 0 && combinedDraftAttachments.length > 0) {
+      for (const att of combinedDraftAttachments.slice(0, 6)) {
+        const copiedFromStudio = await copyStudioFileToOrder(att);
+        if (copiedFromStudio) {
+          storedAttachments.push(copiedFromStudio);
+          continue;
+        }
         if (att.previewDataUrl) {
           const bytes = decodeDataUrlToBytes(att.previewDataUrl);
           if (bytes && bytes.byteLength > 0) {

@@ -46,7 +46,7 @@ export function CTASection() {
             </ButtonLink>
           </div>
           <p className="mt-2 text-[0.625rem] uppercase tracking-[0.2em] text-ivory/65">
-            Pengajuan pesanan daring sedang disiapkan
+            Design Studio · Measurement Studio · Pemesanan &amp; Chat Aktif
           </p>
         </div>
       </div>
