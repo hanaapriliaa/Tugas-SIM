@@ -1,11 +1,14 @@
 import { evaluateDpOverdueForReview, verifyOrderTrackingAccess } from "@/lib/order-tracking";
+import { issueAdditionalCustomerSessionCookie } from "@/lib/server/auth";
 import { getChatEnv } from "@/lib/server/cf-env";
+import { getAuthenticatedCustomerAccount } from "@/lib/server/customer-auth";
 import {
   getOrderByCode,
   getOrInitPaymentConfigInDb,
   grantTrackingAccessCookie,
   saveOrderInDb,
 } from "@/lib/server/order-repo";
+import { ensureStudioSchema } from "@/lib/server/studio-schema";
 
 export async function POST(request: Request) {
   const env = getChatEnv();
@@ -49,10 +52,23 @@ export async function POST(request: Request) {
     return Response.json({ error: verification.error }, { status: 403 });
   }
 
-  const [trackingCookie, paymentConfig] = await Promise.all([
+  const [trackingCookie, paymentConfig, activeAccount] = await Promise.all([
     grantTrackingAccessCookie(request, env.DB, verification.order.orderCode),
     getOrInitPaymentConfigInDb(env.DB),
+    getAuthenticatedCustomerAccount(request, env.DB),
   ]);
+
+  // Pemulihan sesi studio otomatis melalui verifikasi pesanan 2FA yang sah
+  // (tidak menimpa bila browser sudah login ke akun pelanggan lain).
+  let studioRecoveryCookie: string | null = null;
+  if (found.customerSessionId && !activeAccount) {
+    await ensureStudioSchema(env.DB);
+    studioRecoveryCookie = await issueAdditionalCustomerSessionCookie(
+      request,
+      env.DB,
+      found.customerSessionId
+    );
+  }
 
   const headers = new Headers({
     "content-type": "application/json",
@@ -61,11 +77,15 @@ export async function POST(request: Request) {
   if (trackingCookie) {
     headers.append("set-cookie", trackingCookie);
   }
+  if (studioRecoveryCookie) {
+    headers.append("set-cookie", studioRecoveryCookie);
+  }
 
   return new Response(
     JSON.stringify({
       order: verification.order,
       paymentConfig,
+      studioSessionRecovered: Boolean(studioRecoveryCookie),
     }),
     { status: 200, headers }
   );

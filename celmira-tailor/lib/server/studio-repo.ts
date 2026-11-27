@@ -22,7 +22,11 @@ import type {
   ReferenceAttachment,
 } from "@/lib/types/tailor";
 import { ensureStudioSchema } from "./studio-schema.ts";
-import { bindStudioFilesToDesign, extractStudioFileIdFromUrl } from "./studio-storage.ts";
+import {
+  bindStudioFilesToDesign,
+  extractStudioFileIdFromUrl,
+  storeStudioFile,
+} from "./studio-storage.ts";
 
 const SYNC_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -531,4 +535,225 @@ export async function deleteMeasurementProfileInDb(
     .run();
 
   return { ok: true };
+}
+
+function decodeBase64DataUrl(dataUrl: string): Uint8Array | null {
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx <= 0) return null;
+  if (!dataUrl.slice(0, commaIdx).includes(";base64")) return null;
+  try {
+    const binary = atob(dataUrl.slice(commaIdx + 1));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Migrasi idempotent data Design Studio & Measurement Studio lama dari localStorage ke Cloudflare D1 & R2.
+ * Deduplikasi dijamin lewat unique index (customer_session_id, legacy_local_id).
+ */
+export async function migrateLegacyStudioDataInDb(
+  db: D1Database,
+  bucket: R2Bucket | null,
+  customerSessionId: string,
+  payload: {
+    designs?: DesignStudioSavedConfig[];
+    profiles?: MeasurementProfile[];
+  }
+): Promise<{
+  migratedDesigns: number;
+  migratedProfiles: number;
+  designs: DesignStudioSavedConfig[];
+  profiles: MeasurementProfile[];
+}> {
+  await ensureStudioSchema(db);
+  let migratedDesigns = 0;
+  let migratedProfiles = 0;
+
+  const incomingDesigns = Array.isArray(payload.designs)
+    ? payload.designs.slice(0, MAX_SAVED_DESIGNS)
+    : [];
+
+  for (const item of incomingDesigns) {
+    if (!item || typeof item.id !== "string" || !item.id.trim()) continue;
+    const legacyId = item.id.trim();
+
+    const already = await db
+      .prepare(
+        `SELECT id FROM design_configs WHERE customer_session_id = ? AND legacy_local_id = ?`
+      )
+      .bind(customerSessionId, legacyId)
+      .first<{ id: string }>();
+    if (already) continue;
+
+    const draft: DesignStudioDraft = {
+      id: null,
+      title: item.title ?? "",
+      categoryId: item.categoryId,
+      modelName: item.modelName ?? "",
+      specifications: item.specifications,
+      attachments: [],
+    };
+    const validation = validateDesignDraft(draft);
+    if (!validation.valid) continue;
+
+    const existingCount = await db
+      .prepare(`SELECT COUNT(*) as total FROM design_configs WHERE customer_session_id = ?`)
+      .bind(customerSessionId)
+      .first<{ total: number }>();
+    if ((existingCount?.total ?? 0) >= MAX_SAVED_DESIGNS) break;
+
+    const targetId = `dsn-${crypto.randomUUID()}`;
+    const storedAttachments: ReferenceAttachment[] = [];
+
+    for (const att of (item.attachments ?? []).slice(0, 5)) {
+      if (att.url?.startsWith("/api/studio/files/")) {
+        storedAttachments.push({
+          id: att.id,
+          name: att.name,
+          size: att.size,
+          mimeType: att.mimeType,
+          kind: att.kind === "pdf" ? "pdf" : "image",
+          url: att.url,
+          note: att.note ?? "",
+        });
+        continue;
+      }
+      if (bucket && att.previewDataUrl) {
+        const bytes = decodeBase64DataUrl(att.previewDataUrl);
+        if (bytes && bytes.byteLength > 0) {
+          const uploaded = await storeStudioFile(db, bucket, {
+            customerSessionId,
+            designId: null,
+            fileName: att.name || "referensi.png",
+            bytes,
+          });
+          if (uploaded.ok) {
+            storedAttachments.push({
+              id: uploaded.file.id,
+              name: uploaded.file.fileName,
+              size: uploaded.file.sizeBytes,
+              mimeType: uploaded.file.mimeType,
+              kind: uploaded.file.mimeType === "application/pdf" ? "pdf" : "image",
+              url: uploaded.file.url,
+              note: att.note ?? "",
+            });
+          }
+        }
+      }
+    }
+
+    const now = new Date();
+    const normalized = createSavedDesignConfig(
+      { ...draft, id: targetId, attachments: storedAttachments },
+      now
+    );
+    const updatedAt = item.updatedAt || normalized.updatedAt;
+
+    await db
+      .prepare(
+        `INSERT INTO design_configs (
+          id, customer_session_id, legacy_local_id, title, category_id, model_name,
+          specifications_json, attachments_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        targetId,
+        customerSessionId,
+        legacyId,
+        normalized.title,
+        normalized.categoryId,
+        normalized.modelName,
+        JSON.stringify(normalized.specifications),
+        JSON.stringify(normalized.attachments),
+        updatedAt,
+        updatedAt
+      )
+      .run();
+
+    const fileIds = normalized.attachments
+      .map((att) => extractStudioFileIdFromUrl(att.url))
+      .filter((fid): fid is string => Boolean(fid));
+    await bindStudioFilesToDesign(db, targetId, customerSessionId, fileIds);
+    migratedDesigns += 1;
+  }
+
+  const incomingProfiles = Array.isArray(payload.profiles)
+    ? payload.profiles.slice(0, MAX_SAVED_MEASUREMENT_PROFILES)
+    : [];
+
+  for (const item of incomingProfiles) {
+    if (!item || typeof item.id !== "string" || !item.id.trim()) continue;
+    const legacyId = item.id.trim();
+
+    const already = await db
+      .prepare(
+        `SELECT id FROM measurement_profiles WHERE customer_session_id = ? AND legacy_local_id = ?`
+      )
+      .bind(customerSessionId, legacyId)
+      .first<{ id: string }>();
+    if (already) continue;
+
+    const draft: MeasurementStudioDraft = {
+      id: null,
+      label: item.label ?? "",
+      templateId: item.templateId,
+      garmentTypeId: "gamis",
+      categoryHint: item.categoryHint ?? "gamis",
+      values: item.values,
+      extraValues: item.extraValues ?? {},
+      notes: item.notes ?? "",
+    };
+    const validation = validateMeasurementDraft(draft, DEFAULT_MEASUREMENT_TEMPLATES);
+    if (!validation.valid) continue;
+
+    const existingCount = await db
+      .prepare(`SELECT COUNT(*) as total FROM measurement_profiles WHERE customer_session_id = ?`)
+      .bind(customerSessionId)
+      .first<{ total: number }>();
+    if ((existingCount?.total ?? 0) >= MAX_SAVED_MEASUREMENT_PROFILES) break;
+
+    const targetId = `mprof-${crypto.randomUUID()}`;
+    const normalized = createSavedMeasurementProfile(
+      { ...draft, id: targetId },
+      DEFAULT_MEASUREMENT_TEMPLATES,
+      new Date()
+    );
+    const updatedAt = item.updatedAt || normalized.updatedAt;
+
+    await db
+      .prepare(
+        `INSERT INTO measurement_profiles (
+          id, customer_session_id, legacy_local_id, label, template_id, category_hint,
+          values_json, extra_values_json, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        targetId,
+        customerSessionId,
+        legacyId,
+        normalized.label,
+        normalized.templateId,
+        normalized.categoryHint ?? null,
+        JSON.stringify(normalized.values),
+        normalized.extraValues ? JSON.stringify(normalized.extraValues) : null,
+        normalized.notes,
+        updatedAt,
+        updatedAt
+      )
+      .run();
+    migratedProfiles += 1;
+  }
+
+  const [designs, profiles] = await Promise.all([
+    listDesignsInDb(db, customerSessionId),
+    listMeasurementProfilesInDb(db, customerSessionId),
+  ]);
+
+  return { migratedDesigns, migratedProfiles, designs, profiles };
 }

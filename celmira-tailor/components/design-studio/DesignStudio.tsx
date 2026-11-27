@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { DesignStudioForm } from "@/components/design-studio/DesignStudioForm";
 import { SilhouettePreview } from "@/components/design-studio/SilhouettePreview";
-import { StudioSyncPanel } from "@/components/studio/StudioSyncPanel";
+import { AutoSyncStatusBar } from "@/components/studio/AutoSyncStatusBar";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { garmentCategories } from "@/lib/booking-options";
@@ -30,8 +30,10 @@ import {
   StudioApiError,
   deleteDesignApi,
   fetchSavedDesignsApi,
+  migrateLegacyStudioDataIfNeeded,
   saveDesignApi,
   uploadStudioReferenceFileApi,
+  type AutoSyncState,
 } from "@/lib/studio-client";
 import type {
   DesignStudioSavedConfig,
@@ -46,6 +48,8 @@ type StatusMessage = {
   tone: StatusTone;
   message: string;
 };
+
+const AUTOSYNC_DEBOUNCE_MS = 900;
 
 const smallAction =
   "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full border border-cocoa/25 px-4 py-2 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-espresso transition-colors hover:border-cocoa hover:bg-cream/70";
@@ -63,14 +67,147 @@ export function DesignStudio() {
   const searchParams = useSearchParams();
   const [draft, setDraft] = useState<DesignStudioDraft>(() => createEmptyDesignDraft());
   const [savedDesigns, setSavedDesigns] = useState<DesignStudioSavedConfig[]>([]);
-  const [syncCode, setSyncCode] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [syncState, setSyncState] = useState<AutoSyncState>("idle");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Refs untuk debounce & coalescing penyimpanan otomatis tanpa race condition
+  const draftRef = useRef<DesignStudioDraft>(draft);
+  const latestRevisionRef = useRef(0);
+  const savedRevisionRef = useRef(0);
+  const inFlightRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  const flushAutoSave = useCallback(async (forceManualFeedback = false) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const currentDraft = draftRef.current;
+    const validation = validateDesignDraft(currentDraft);
+
+    if (!validation.valid) {
+      if (forceManualFeedback) {
+        setErrors(validation.errors);
+        setStatus({
+          tone: "error",
+          message: "Lengkapi bagian yang ditandai sebelum menyimpan desain.",
+        });
+      }
+      return;
+    }
+
+    if (inFlightRef.current) {
+      return;
+    }
+
+    const targetRevision = latestRevisionRef.current;
+    inFlightRef.current = true;
+    setIsSaving(true);
+    setSyncState("saving");
+    setSyncError(null);
+
+    try {
+      const wasUpdate = Boolean(currentDraft.id && currentDraft.id.startsWith("dsn-"));
+      const { design } = await saveDesignApi(currentDraft);
+
+      savedRevisionRef.current = Math.max(savedRevisionRef.current, targetRevision);
+      setSavedDesigns((previous) => upsertSavedDesign(previous, design));
+      setLastSavedAt(design.updatedAt);
+      setErrors({});
+
+      // Tetapkan ID server tanpa menimpa ketikan terbaru jika pengguna sedang mengetik lagi
+      setDraft((previous) => {
+        if (latestRevisionRef.current === targetRevision) {
+          return createDesignDraftFromSaved(design);
+        }
+        return previous.id ? previous : { ...previous, id: design.id };
+      });
+
+      if (forceManualFeedback) {
+        setStatus({
+          tone: "success",
+          message: wasUpdate
+            ? `Perubahan desain "${design.title}" tersimpan di server Celmira.`
+            : `Desain "${design.title}" tersimpan di server Celmira dan siap digunakan di pesanan.`,
+        });
+      }
+
+      if (latestRevisionRef.current > savedRevisionRef.current) {
+        inFlightRef.current = false;
+        setIsSaving(false);
+        void flushAutoSave(false);
+        return;
+      }
+
+      // Status "Tersimpan" hanya ditampilkan setelah server benar-benar mengonfirmasi revisi terakhir
+      setSyncState("saved");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Gagal menyimpan desain ke server. Coba lagi.";
+      if (err instanceof StudioApiError && err.errors && forceManualFeedback) {
+        setErrors(err.errors);
+      }
+      setSyncState("error");
+      setSyncError(message);
+      if (forceManualFeedback) {
+        setStatus({ tone: "error", message });
+      }
+    } finally {
+      inFlightRef.current = false;
+      setIsSaving(false);
+    }
+  }, []);
+
+  const scheduleAutoSave = useCallback(
+    (nextDraft: DesignStudioDraft) => {
+      draftRef.current = nextDraft;
+      latestRevisionRef.current += 1;
+
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+
+      const validation = validateDesignDraft(nextDraft);
+      if (!validation.valid) {
+        return;
+      }
+
+      setSyncState("saving");
+      setSyncError(null);
+      debounceTimerRef.current = setTimeout(() => {
+        void flushAutoSave(false);
+      }, AUTOSYNC_DEBOUNCE_MS);
+    },
+    [flushAutoSave]
+  );
+
+  // Otomatis retry saat koneksi kembali online jika penyimpanan sebelumnya gagal
+  useEffect(() => {
+    function handleOnline() {
+      if (latestRevisionRef.current > savedRevisionRef.current) {
+        void flushAutoSave(false);
+      }
+    }
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [flushAutoSave]);
 
   useEffect(() => {
     let active = true;
@@ -78,20 +215,25 @@ export function DesignStudio() {
     async function bootstrap() {
       let stored: DesignStudioSavedConfig[] = [];
       try {
-        const res = await fetchSavedDesignsApi();
+        const migrated = await migrateLegacyStudioDataIfNeeded().catch(() => ({ ran: false }));
         if (!active) return;
-        stored = res.designs;
-        setSavedDesigns(res.designs);
-        setSyncCode(res.syncCode);
+
+        if (migrated.ran && "designs" in migrated && Array.isArray(migrated.designs)) {
+          stored = migrated.designs;
+        } else {
+          const res = await fetchSavedDesignsApi();
+          if (!active) return;
+          stored = res.designs;
+        }
+        setSavedDesigns(stored);
       } catch (err) {
         if (!active) return;
-        setStatus({
-          tone: "error",
-          message:
-            err instanceof Error
-              ? err.message
-              : "Gagal memuat daftar desain tersimpan dari server.",
-        });
+        setSyncState("error");
+        setSyncError(
+          err instanceof Error
+            ? err.message
+            : "Gagal memuat daftar desain tersimpan dari server."
+        );
       }
 
       const urlParams =
@@ -108,6 +250,8 @@ export function DesignStudio() {
         const matched = stored.find((item) => item.id === designIdParam);
         if (matched) {
           nextDraft = createDesignDraftFromSaved(matched);
+          setLastSavedAt(matched.updatedAt);
+          setSyncState("saved");
           setStatus({
             tone: "info",
             message: `Memuat desain tersimpan "${matched.title}" untuk diedit.`,
@@ -120,7 +264,7 @@ export function DesignStudio() {
         if (nextDraft) {
           setStatus({
             tone: "info",
-            message: `Dimulai dari referensi "${nextDraft.modelName}". Lengkapi detail lalu simpan.`,
+            message: `Dimulai dari referensi "${nextDraft.modelName}". Perubahan Anda akan tersimpan otomatis.`,
           });
         }
       }
@@ -133,7 +277,10 @@ export function DesignStudio() {
         nextDraft = createEmptyDesignDraft(categoryParam as GarmentCategoryId);
       }
 
-      if (nextDraft) setDraft(nextDraft);
+      if (nextDraft) {
+        draftRef.current = nextDraft;
+        setDraft(nextDraft);
+      }
       setHydrated(true);
     }
 
@@ -153,8 +300,16 @@ export function DesignStudio() {
     });
   }
 
+  function applyDraftChange(updater: (previous: DesignStudioDraft) => DesignStudioDraft) {
+    setDraft((previous) => {
+      const next = updater(previous);
+      scheduleAutoSave(next);
+      return next;
+    });
+  }
+
   function updateField<K extends keyof DesignStudioDraft>(key: K, value: DesignStudioDraft[K]) {
-    setDraft((previous) => ({ ...previous, [key]: value }));
+    applyDraftChange((previous) => ({ ...previous, [key]: value }));
     clearErrors(String(key));
   }
 
@@ -162,7 +317,7 @@ export function DesignStudio() {
     key: K,
     value: GarmentSpecifications[K]
   ) {
-    setDraft((previous) => ({
+    applyDraftChange((previous) => ({
       ...previous,
       specifications: { ...previous.specifications, [key]: value },
     }));
@@ -170,7 +325,7 @@ export function DesignStudio() {
   }
 
   function handleCategoryChange(categoryId: GarmentCategoryId) {
-    setDraft((previous) => ({
+    applyDraftChange((previous) => ({
       ...previous,
       categoryId,
       modelName: getModelOptions(categoryId)[0] ?? previous.modelName,
@@ -179,7 +334,7 @@ export function DesignStudio() {
   }
 
   function handleColorChange(name: string, hex: string) {
-    setDraft((previous) => ({
+    applyDraftChange((previous) => ({
       ...previous,
       specifications: { ...previous.specifications, colorName: name, colorHex: hex },
     }));
@@ -190,7 +345,7 @@ export function DesignStudio() {
     if (!fileList || fileList.length === 0) return;
     setUploadError(null);
 
-    const remainingSlots = MAX_ATTACHMENTS_COUNT - draft.attachments.length;
+    const remainingSlots = MAX_ATTACHMENTS_COUNT - draftRef.current.attachments.length;
     if (remainingSlots <= 0) {
       setUploadError(`Maksimal ${MAX_ATTACHMENTS_COUNT} file referensi per desain.`);
       return;
@@ -209,7 +364,7 @@ export function DesignStudio() {
           continue;
         }
         try {
-          const res = await uploadStudioReferenceFileApi(file, draft.id);
+          const res = await uploadStudioReferenceFileApi(file, draftRef.current.id);
           uploadedAttachments.push(res.attachment);
         } catch (err) {
           rejectedMessages.push(
@@ -219,7 +374,7 @@ export function DesignStudio() {
       }
 
       if (uploadedAttachments.length > 0) {
-        setDraft((previous) => ({
+        applyDraftChange((previous) => ({
           ...previous,
           attachments: [...previous.attachments, ...uploadedAttachments],
         }));
@@ -233,57 +388,23 @@ export function DesignStudio() {
   }
 
   function handleRemoveAttachment(id: string) {
-    setDraft((previous) => ({
+    applyDraftChange((previous) => ({
       ...previous,
       attachments: previous.attachments.filter((attachment) => attachment.id !== id),
     }));
   }
 
-  async function handleSave() {
-    const result = validateDesignDraft(draft);
-    if (!result.valid) {
-      setErrors(result.errors);
-      setStatus({
-        tone: "error",
-        message: "Lengkapi bagian yang ditandai sebelum menyimpan desain.",
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    setStatus(null);
-    try {
-      const wasUpdate = Boolean(draft.id && draft.id.startsWith("dsn-"));
-      const { design, syncCode: nextCode } = await saveDesignApi(draft);
-      if (nextCode) setSyncCode(nextCode);
-
-      setSavedDesigns((previous) => upsertSavedDesign(previous, design));
-      setDraft(createDesignDraftFromSaved(design));
-      setErrors({});
-      setStatus({
-        tone: "success",
-        message: wasUpdate
-          ? `Perubahan desain "${design.title}" berhasil disimpan ke server Celmira.`
-          : `Desain "${design.title}" berhasil disimpan ke server Celmira dan siap digunakan di pesanan.`,
-      });
-    } catch (err) {
-      if (err instanceof StudioApiError && err.errors) {
-        setErrors(err.errors);
-      }
-      setStatus({
-        tone: "error",
-        message:
-          err instanceof Error ? err.message : "Gagal menyimpan desain ke server. Silakan coba lagi.",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   function handleLoad(config: DesignStudioSavedConfig) {
-    setDraft(createDesignDraftFromSaved(config));
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    const restored = createDesignDraftFromSaved(config);
+    draftRef.current = restored;
+    savedRevisionRef.current = latestRevisionRef.current;
+    setDraft(restored);
     setErrors({});
     setUploadError(null);
+    setSyncState("saved");
+    setSyncError(null);
+    setLastSavedAt(config.updatedAt);
     setStatus({ tone: "info", message: `Memuat desain "${config.title}" untuk diedit.` });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -295,9 +416,13 @@ export function DesignStudio() {
       await deleteDesignApi(config.id);
       setSavedDesigns((previous) => removeSavedDesign(previous, config.id));
 
-      if (draft.id === config.id) {
-        setDraft(createEmptyDesignDraft(draft.categoryId));
+      if (draftRef.current.id === config.id) {
+        const empty = createEmptyDesignDraft(draftRef.current.categoryId);
+        draftRef.current = empty;
+        setDraft(empty);
         setErrors({});
+        setSyncState("idle");
+        setLastSavedAt(null);
       }
 
       setStatus({
@@ -313,9 +438,16 @@ export function DesignStudio() {
   }
 
   function handleNewDesign() {
-    setDraft(createEmptyDesignDraft());
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    const empty = createEmptyDesignDraft();
+    draftRef.current = empty;
+    savedRevisionRef.current = latestRevisionRef.current;
+    setDraft(empty);
     setErrors({});
     setUploadError(null);
+    setSyncState("idle");
+    setSyncError(null);
+    setLastSavedAt(null);
     setStatus({ tone: "info", message: "Draft desain baru siap diisi." });
   }
 
@@ -326,19 +458,14 @@ export function DesignStudio() {
       <section className="shell pb-8 pt-12 sm:pt-16">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex max-w-2xl flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="eyebrow">Design Studio</p>
-              <span className="rounded-full border border-cocoa/25 bg-cream/60 px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.16em] text-cocoa">
-                Tersinkronisasi Server (D1 &amp; R2)
-              </span>
-            </div>
+            <p className="eyebrow">Design Studio</p>
             <h1 className="text-balance text-[2.2rem] leading-[1.1] text-espresso sm:text-[2.9rem]">
               Rancang busana, lihat perubahannya langsung.
             </h1>
             <p className="max-w-xl text-pretty text-sm leading-relaxed text-muted sm:text-[0.95rem]">
               Pilih kategori, bahan, warna, dan detail jahit serta unggah gambar referensi.
-              Konfigurasi disimpan di server Celmira dan langsung terhubung ke halaman pemesanan
-              serta panel peninjauan admin.
+              Perubahan desain tersimpan otomatis ke server Celmira dan langsung terhubung ke
+              halaman pemesanan serta panel admin.
             </p>
           </div>
 
@@ -352,17 +479,28 @@ export function DesignStudio() {
         </div>
 
         <div className="mt-6">
-          <StudioSyncPanel
-            contextLabel="Design Studio"
-            onRestored={({ syncCode: restoredCode, designs }) => {
-              setSyncCode(restoredCode);
-              setSavedDesigns(designs);
-              setStatus({
-                tone: "success",
-                message: `Berhasil memuat ${designs.length} desain tersimpan dari server Celmira.`,
-              });
+          <AutoSyncStatusBar
+            lastSavedAt={lastSavedAt}
+            onAccountSynced={({ customer, designs }) => {
+              if (designs) {
+                setSavedDesigns(designs);
+              }
+              if (customer) {
+                setStatus({
+                  tone: "success",
+                  message: `Masuk sebagai ${customer.fullName || customer.email}. Daftar desain tersimpan telah disinkronkan.`,
+                });
+              } else {
+                const empty = createEmptyDesignDraft();
+                draftRef.current = empty;
+                setDraft(empty);
+                setSyncState("idle");
+                setLastSavedAt(null);
+              }
             }}
-            syncCode={syncCode}
+            onRetry={() => void flushAutoSave(false)}
+            syncError={syncError}
+            syncState={syncState}
           />
         </div>
       </section>
@@ -382,20 +520,20 @@ export function DesignStudio() {
               onFilesSelected={(files) => void handleFilesSelected(files)}
               onRemoveAttachment={handleRemoveAttachment}
               uploadError={
-                isUploading ? "Mengunggah file referensi ke penyimpanan aman R2..." : uploadError
+                isUploading ? "Mengunggah file referensi ke penyimpanan aman..." : uploadError
               }
             />
 
             <div className="mt-6 flex flex-col gap-4 rounded-[1.5rem] border border-cocoa/15 bg-cream/45 p-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-md text-xs leading-relaxed text-muted">
-                Desain dan lampiran referensi disimpan ke database Cloudflare D1 &amp; penyimpanan
-                privat R2 sehingga dapat dibuka kembali dari perangkat lain dan ditinjau langsung
-                oleh admin saat pesanan diajukan.
+                Desain dan lampiran referensi tersimpan otomatis ke server Celmira setelah nama
+                desain diisi. Anda juga dapat menekan tombol di samping untuk memastikan
+                penyimpanan segera.
               </p>
               <button
                 className={buttonClass("solid", "w-fit shrink-0 cursor-pointer")}
                 disabled={isSaving || isUploading}
-                onClick={() => void handleSave()}
+                onClick={() => void flushAutoSave(true)}
                 type="button"
               >
                 {isSaving
@@ -472,7 +610,8 @@ export function DesignStudio() {
                   </ButtonLink>
                 ) : (
                   <p className="rounded-xl border border-cocoa/12 bg-ivory/85 px-4 py-3 text-[0.6875rem] leading-relaxed text-muted">
-                    Simpan desain terlebih dahulu untuk dapat mengajukannya bersama pesanan custom.
+                    Beri nama desain agar tersimpan otomatis dan dapat langsung digunakan di
+                    pesanan custom.
                   </p>
                 )}
 
@@ -504,7 +643,7 @@ export function DesignStudio() {
         <section aria-labelledby="saved-designs-title" className="mt-14">
           <div className="flex flex-col gap-3 border-t border-cocoa/12 pt-8 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-2">
-              <p className="eyebrow">Koleksi Tersimpan di Server</p>
+              <p className="eyebrow">Koleksi Desain Anda</p>
               <h2
                 className="text-balance text-[1.75rem] leading-[1.15] text-espresso sm:text-[2.1rem]"
                 id="saved-designs-title"
@@ -512,7 +651,7 @@ export function DesignStudio() {
                 Desain tersimpan
               </h2>
               <p className="max-w-xl text-sm leading-relaxed text-muted">
-                Konfigurasi tersimpan di backend Celmira dan dapat diedit ulang atau dipakai
+                Desain tersimpan otomatis dan dapat dibuka kembali untuk diedit atau dipakai
                 langsung pada formulir pemesanan.
               </p>
             </div>
@@ -522,15 +661,15 @@ export function DesignStudio() {
           </div>
 
           {!hydrated ? (
-            <p className="mt-6 text-sm text-muted">Memuat desain tersimpan dari server...</p>
+            <p className="mt-6 text-sm text-muted">Memuat desain tersimpan...</p>
           ) : savedDesigns.length === 0 ? (
             <div className="mt-6 rounded-[1.5rem] border border-dashed border-cocoa/25 bg-cream/35 px-6 py-10 text-center">
               <p className="font-[family-name:var(--font-display)] text-lg text-espresso">
                 Belum ada desain tersimpan
               </p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
-                Lengkapi formulir di atas, lalu tekan “Simpan Desain”. Desain pertama Anda akan
-                tersimpan di server dan muncul di sini.
+                Lengkapi nama dan detail desain di atas. Desain Anda akan otomatis tersimpan dan
+                muncul di sini.
               </p>
             </div>
           ) : (

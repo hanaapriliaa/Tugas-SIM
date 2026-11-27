@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createEmptyDesignDraft } from "../lib/design-studio.ts";
-import { createMeasurementDraftForTemplate } from "../lib/measurement-studio.ts";
+import { createEmptyDesignDraft, createSavedDesignConfig } from "../lib/design-studio.ts";
+import {
+  DEFAULT_MEASUREMENT_TEMPLATES,
+  createMeasurementDraftForTemplate,
+  createSavedMeasurementProfile,
+} from "../lib/measurement-studio.ts";
 import { createInitialOrderDraft } from "../lib/booking-options.ts";
 import { STUDIO_SCHEMA_STATEMENTS } from "../lib/server/studio-schema.ts";
 import {
@@ -9,15 +13,17 @@ import {
   validateStudioBinaryFile,
 } from "../lib/server/studio-storage.ts";
 import {
-  generateStudioSyncCode,
-  normalizeStudioSyncCode,
-  saveDesignInDb,
-  saveMeasurementProfileInDb,
   listDesignsInDb,
   listMeasurementProfilesInDb,
-  getOrCreateStudioSyncCode,
-  findCustomerSessionBySyncCode,
+  migrateLegacyStudioDataInDb,
+  saveDesignInDb,
+  saveMeasurementProfileInDb,
 } from "../lib/server/studio-repo.ts";
+import {
+  normalizeCustomerEmail,
+  validateCustomerEmail,
+  validateCustomerPassword,
+} from "../lib/server/customer-auth.ts";
 import { createOrderInDb, getOrderById } from "../lib/server/order-repo.ts";
 
 const PNG_HEADER = new Uint8Array([
@@ -27,13 +33,12 @@ const PDF_HEADER = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x3
 const FAKE_HTML = new TextEncoder().encode("<html><script>alert(1)</script></html>");
 
 /**
- * Mock D1 minimal berbasis Map untuk menguji repository Design Studio, Measurement Studio,
- * Kode Sinkronisasi lintas browser, dan immutability snapshot ukuran pesanan.
+ * Mock D1 in-memory untuk menguji repository Design Studio, Measurement Studio,
+ * migrasi idempotent localStorage, dan immutability snapshot ukuran pesanan.
  */
 function createInMemoryMockDb() {
   const designs = new Map<string, Record<string, unknown>>();
   const profiles = new Map<string, Record<string, unknown>>();
-  const syncCodes = new Map<string, { customer_session_id: string; sync_code: string }>();
   const orders = new Map<string, Record<string, unknown>>();
 
   const db = {
@@ -48,13 +53,19 @@ function createInMemoryMockDb() {
           return stmt;
         },
         async first<T>() {
-          if (/FROM studio_access_codes WHERE customer_session_id/i.test(sql)) {
-            const row = syncCodes.get(String(bound[0]));
-            return (row ?? null) as T;
+          if (/FROM design_configs WHERE customer_session_id = \? AND legacy_local_id = \?/i.test(sql)) {
+            for (const row of designs.values()) {
+              if (row.customer_session_id === bound[0] && row.legacy_local_id === bound[1]) {
+                return { id: row.id } as T;
+              }
+            }
+            return null as T;
           }
-          if (/FROM studio_access_codes\s+WHERE sync_code/i.test(sql)) {
-            for (const row of syncCodes.values()) {
-              if (row.sync_code === bound[0]) return row as T;
+          if (/FROM measurement_profiles WHERE customer_session_id = \? AND legacy_local_id = \?/i.test(sql)) {
+            for (const row of profiles.values()) {
+              if (row.customer_session_id === bound[0] && row.legacy_local_id === bound[1]) {
+                return { id: row.id } as T;
+              }
             }
             return null as T;
           }
@@ -97,23 +108,35 @@ function createInMemoryMockDb() {
           return { results: [] as T[] };
         },
         async run() {
-          if (/INSERT INTO studio_access_codes/i.test(sql)) {
-            syncCodes.set(String(bound[0]), {
-              customer_session_id: String(bound[0]),
-              sync_code: String(bound[1]),
-            });
-          } else if (/INSERT INTO design_configs/i.test(sql)) {
-            designs.set(String(bound[0]), {
-              id: bound[0],
-              customer_session_id: bound[1],
-              title: bound[2],
-              category_id: bound[3],
-              model_name: bound[4],
-              specifications_json: bound[5],
-              attachments_json: bound[6],
-              created_at: bound[7],
-              updated_at: bound[8],
-            });
+          if (/INSERT INTO design_configs/i.test(sql)) {
+            const hasLegacy = /legacy_local_id/i.test(sql);
+            if (hasLegacy) {
+              designs.set(String(bound[0]), {
+                id: bound[0],
+                customer_session_id: bound[1],
+                legacy_local_id: bound[2],
+                title: bound[3],
+                category_id: bound[4],
+                model_name: bound[5],
+                specifications_json: bound[6],
+                attachments_json: bound[7],
+                created_at: bound[8],
+                updated_at: bound[9],
+              });
+            } else {
+              designs.set(String(bound[0]), {
+                id: bound[0],
+                customer_session_id: bound[1],
+                legacy_local_id: null,
+                title: bound[2],
+                category_id: bound[3],
+                model_name: bound[4],
+                specifications_json: bound[5],
+                attachments_json: bound[6],
+                created_at: bound[7],
+                updated_at: bound[8],
+              });
+            }
           } else if (/UPDATE design_configs/i.test(sql)) {
             const id = String(bound[6]);
             const existing = designs.get(id);
@@ -129,18 +152,36 @@ function createInMemoryMockDb() {
               });
             }
           } else if (/INSERT INTO measurement_profiles/i.test(sql)) {
-            profiles.set(String(bound[0]), {
-              id: bound[0],
-              customer_session_id: bound[1],
-              label: bound[2],
-              template_id: bound[3],
-              category_hint: bound[4],
-              values_json: bound[5],
-              extra_values_json: bound[6],
-              notes: bound[7],
-              created_at: bound[8],
-              updated_at: bound[9],
-            });
+            const hasLegacy = /legacy_local_id/i.test(sql);
+            if (hasLegacy) {
+              profiles.set(String(bound[0]), {
+                id: bound[0],
+                customer_session_id: bound[1],
+                legacy_local_id: bound[2],
+                label: bound[3],
+                template_id: bound[4],
+                category_hint: bound[5],
+                values_json: bound[6],
+                extra_values_json: bound[7],
+                notes: bound[8],
+                created_at: bound[9],
+                updated_at: bound[10],
+              });
+            } else {
+              profiles.set(String(bound[0]), {
+                id: bound[0],
+                customer_session_id: bound[1],
+                legacy_local_id: null,
+                label: bound[2],
+                template_id: bound[3],
+                category_hint: bound[4],
+                values_json: bound[5],
+                extra_values_json: bound[6],
+                notes: bound[7],
+                created_at: bound[8],
+                updated_at: bound[9],
+              });
+            }
           } else if (/UPDATE measurement_profiles/i.test(sql)) {
             const id = String(bound[7]);
             const existing = profiles.get(id);
@@ -183,17 +224,26 @@ function createInMemoryMockDb() {
   return db as unknown as D1Database;
 }
 
-describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
-  it("memiliki DDL lengkap untuk tabel studio dan multi-device session tokens", () => {
+describe("Stage 6B & Revisi — Design Studio, Measurement Studio, Accounts & Migration", () => {
+  it("memiliki DDL lengkap termasuk customer_accounts, legacy_local_id, dan tabel studio", () => {
     const joined = STUDIO_SCHEMA_STATEMENTS.join("\n");
     assert.match(joined, /CREATE TABLE IF NOT EXISTS customer_session_tokens/i);
-    assert.match(joined, /CREATE TABLE IF NOT EXISTS studio_access_codes/i);
+    assert.match(joined, /CREATE TABLE IF NOT EXISTS customer_accounts/i);
     assert.match(joined, /CREATE TABLE IF NOT EXISTS design_configs/i);
     assert.match(joined, /CREATE TABLE IF NOT EXISTS measurement_profiles/i);
     assert.match(joined, /CREATE TABLE IF NOT EXISTS studio_files/i);
+    assert.match(joined, /legacy_local_id/i);
   });
 
-  it("memvalidasi file referensi studio (PNG/PDF valid, tolak HTML palsu dan >5MB)", () => {
+  it("memvalidasi email dan kata sandi akun pelanggan secara ketat", () => {
+    assert.equal(normalizeCustomerEmail("  Hana@Example.COM "), "hana@example.com");
+    assert.equal(validateCustomerEmail("hana@example.com"), true);
+    assert.equal(validateCustomerEmail("tidak-valid"), false);
+    assert.equal(validateCustomerPassword("1234567"), "Kata sandi minimal 8 karakter.");
+    assert.equal(validateCustomerPassword("KuatSekali2026!"), null);
+  });
+
+  it("memvalidasi file referensi studio (PNG/PDF valid, tolak HTML palsu)", () => {
     const png = validateStudioBinaryFile({ fileName: "sketsa-kebaya.png", bytes: PNG_HEADER });
     assert.equal(png.ok, true);
     if (png.ok) assert.equal(png.mimeType, "image/png");
@@ -212,22 +262,52 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     assert.equal(extractStudioFileIdFromUrl("/api/orders/files/ofile-1"), null);
   });
 
-  it("menghasilkan dan menormalisasi Kode Sinkronisasi Studio secara konsisten", () => {
-    const generated = generateStudioSyncCode();
-    assert.match(generated, /^CS-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
-    assert.equal(normalizeStudioSyncCode("csab12cd34"), "CS-AB12-CD34");
-    assert.equal(normalizeStudioSyncCode(" cs-ab12-cd34 "), "CS-AB12-CD34");
+  it("memigrasikan data localStorage lama ke D1 secara idempotent tanpa duplikasi", async () => {
+    const db = createInMemoryMockDb();
+    const sessionId = "csess-migrate-1";
+
+    const dDraft = createEmptyDesignDraft("kebaya");
+    dDraft.title = "Kebaya Legacy Browser";
+    const legacyDesign = createSavedDesignConfig({ ...dDraft, id: "design-legacy-1" });
+
+    const mDraft = createMeasurementDraftForTemplate("gamis");
+    mDraft.label = "Profil Legacy Browser";
+    mDraft.values.bust = "90";
+    mDraft.values.waist = "72";
+    mDraft.values.garmentLength = "136";
+    const legacyProfile = createSavedMeasurementProfile(
+      { ...mDraft, id: "profile-legacy-1" },
+      DEFAULT_MEASUREMENT_TEMPLATES
+    );
+
+    const first = await migrateLegacyStudioDataInDb(db, null, sessionId, {
+      designs: [legacyDesign],
+      profiles: [legacyProfile],
+    });
+    assert.equal(first.migratedDesigns, 1);
+    assert.equal(first.migratedProfiles, 1);
+    assert.equal(first.designs.length, 1);
+    assert.equal(first.profiles.length, 1);
+
+    // Panggilan kedua dengan data yang sama HARUS 0 duplikasi
+    const second = await migrateLegacyStudioDataInDb(db, null, sessionId, {
+      designs: [legacyDesign],
+      profiles: [legacyProfile],
+    });
+    assert.equal(second.migratedDesigns, 0);
+    assert.equal(second.migratedProfiles, 0);
+    assert.equal(second.designs.length, 1);
+    assert.equal(second.profiles.length, 1);
   });
 
-  it("menyimpan & mengedit Design Studio serta dapat diakses ulang lintas sesi via syncCode", async () => {
+  it("menyimpan & memperbarui Design Studio di D1 secara konsisten", async () => {
     const db = createInMemoryMockDb();
     const sessionId = "csess-studio-test-1";
 
-    const syncCode = await getOrCreateStudioSyncCode(db, sessionId);
     const draft = createEmptyDesignDraft("kebaya");
     draft.title = "Kebaya Wisuda Sage";
     draft.modelName = "Kebaya Kartini";
-    draft.specifications.fabric = "Brokat";
+    draft.specifications.fabric = "Brokat & Lace + Furing";
     draft.specifications.colorName = "Sage";
     draft.specifications.colorHex = "#a8b3a1";
 
@@ -235,7 +315,6 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     assert.equal(created.ok, true);
     if (!created.ok) return;
 
-    // Edit desain yang sudah disimpan
     const editedDraft = {
       ...draft,
       id: created.design.id,
@@ -248,12 +327,7 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     const updated = await saveDesignInDb(db, sessionId, editedDraft, created.design.id);
     assert.equal(updated.ok, true);
 
-    // Simulasi browser context lain memulihkan sesi menggunakan syncCode
-    const restoredSession = await findCustomerSessionBySyncCode(db, syncCode.toLowerCase());
-    assert.ok(restoredSession);
-    assert.equal(restoredSession.customerSessionId, sessionId);
-
-    const designs = await listDesignsInDb(db, restoredSession.customerSessionId);
+    const designs = await listDesignsInDb(db, sessionId);
     assert.equal(designs.length, 1);
     assert.equal(designs[0].title, "Kebaya Wisuda Sage Revisi");
     assert.equal(designs[0].specifications.laceDetail, "Renda tipis bagian tepi");
@@ -263,7 +337,6 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     const db = createInMemoryMockDb();
     const sessionId = "csess-measure-test-1";
 
-    // 1. Simpan profil ukuran awal di Measurement Studio
     const mDraft = createMeasurementDraftForTemplate("gamis");
     mDraft.label = "Profil Gamis Hana";
     mDraft.values.bust = "92";
@@ -278,7 +351,6 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     assert.equal(savedProfile.ok, true);
     if (!savedProfile.ok) return;
 
-    // 2. Buat pesanan dengan profil ukuran tersebut
     const orderDraft = createInitialOrderDraft();
     orderDraft.categoryId = "gamis";
     orderDraft.designSource = "design-studio";
@@ -314,7 +386,7 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     assert.equal(order.designModelName, "Gamis Flowy");
     assert.ok(order.measurements.snapshotTakenAt);
 
-    // 3. Perbarui profil ukuran customer di Measurement Studio (bust 92 -> 104, garmentLength 138 -> 144)
+    // Perbarui profil ukuran customer di Measurement Studio
     const editedMeasureDraft = {
       ...mDraft,
       id: savedProfile.profile.id,
@@ -333,12 +405,11 @@ describe("Stage 6B — Design Studio & Measurement Studio Backend", () => {
     );
     assert.equal(updatedProfile.ok, true);
 
-    // 4. Verifikasi profil baru berubah di D1
     const profilesAfter = await listMeasurementProfilesInDb(db, sessionId);
     assert.equal(profilesAfter[0].values.bust, "104");
     assert.equal(profilesAfter[0].values.garmentLength, "144");
 
-    // 5. Verifikasi pesanan lama TIDAK berubah (tetap 92 & 138)
+    // Verifikasi pesanan lama TIDAK berubah
     const oldOrder = await getOrderById(db, order.id);
     assert.ok(oldOrder);
     assert.equal(oldOrder.order.measurements.values.bust, "92");

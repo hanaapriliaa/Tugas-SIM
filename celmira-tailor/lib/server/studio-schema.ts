@@ -11,6 +11,20 @@ export const STUDIO_SCHEMA_STATEMENTS: readonly string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_customer_session_tokens_session
     ON customer_session_tokens(customer_session_id)`,
+  `CREATE TABLE IF NOT EXISTS customer_accounts (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL DEFAULT '',
+    customer_session_id TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (customer_session_id) REFERENCES chat_customer_sessions(id) ON DELETE CASCADE
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_accounts_email
+    ON customer_accounts(email)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_accounts_session
+    ON customer_accounts(customer_session_id)`,
   `CREATE TABLE IF NOT EXISTS studio_access_codes (
     customer_session_id TEXT PRIMARY KEY,
     sync_code TEXT NOT NULL UNIQUE,
@@ -23,6 +37,7 @@ export const STUDIO_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS design_configs (
     id TEXT PRIMARY KEY,
     customer_session_id TEXT NOT NULL,
+    legacy_local_id TEXT,
     title TEXT NOT NULL,
     category_id TEXT NOT NULL,
     model_name TEXT NOT NULL,
@@ -37,6 +52,7 @@ export const STUDIO_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS measurement_profiles (
     id TEXT PRIMARY KEY,
     customer_session_id TEXT NOT NULL,
+    legacy_local_id TEXT,
     label TEXT NOT NULL,
     template_id TEXT NOT NULL,
     category_hint TEXT,
@@ -65,11 +81,33 @@ export const STUDIO_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_studio_files_session ON studio_files(customer_session_id)`,
 ];
 
+const LEGACY_COLUMN_ALTERS: readonly string[] = [
+  `ALTER TABLE design_configs ADD COLUMN legacy_local_id TEXT`,
+  `ALTER TABLE measurement_profiles ADD COLUMN legacy_local_id TEXT`,
+];
+
+const LEGACY_INDEX_STATEMENTS: readonly string[] = [
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_design_configs_legacy
+    ON design_configs(customer_session_id, legacy_local_id)
+    WHERE legacy_local_id IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_measurement_profiles_legacy
+    ON measurement_profiles(customer_session_id, legacy_local_id)
+    WHERE legacy_local_id IS NOT NULL`,
+];
+
 const initializedStudioDbs = new WeakSet<D1Database>();
 
 export async function ensureStudioSchema(db: D1Database): Promise<void> {
   if (initializedStudioDbs.has(db)) return;
   await ensureChatSchema(db);
   await db.batch(STUDIO_SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
+  for (const alterSql of LEGACY_COLUMN_ALTERS) {
+    try {
+      await db.prepare(alterSql).run();
+    } catch {
+      // Kolom legacy_local_id sudah ada pada database baru.
+    }
+  }
+  await db.batch(LEGACY_INDEX_STATEMENTS.map((sql) => db.prepare(sql)));
   initializedStudioDbs.add(db);
 }

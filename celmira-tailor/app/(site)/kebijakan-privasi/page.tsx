@@ -34,7 +34,7 @@ const sections = [
       "Data pesanan, chat, desain tersimpan, dan profil ukuran disimpan pada database Cloudflare D1, sedangkan file biner (referensi desain, lampiran chat, dan bukti pembayaran) disimpan di penyimpanan privat Cloudflare R2.",
       "Akses sesi menggunakan cookie HttpOnly (celmira_chat_session untuk sesi pelanggan dan celmira_track_session untuk akses pelacakan terverifikasi). Draft formulir pesanan yang belum dikirim dapat tersimpan sementara di browser Anda agar tidak hilang saat pengisian.",
       "Pelacakan pesanan dilindungi verifikasi dua faktor (nomor pesanan disertai nomor WhatsApp terdaftar atau Kode Akses Tracking). Akses file privat hanya diberikan kepada pemilik sesi, pemegang verifikasi tracking pesanan terkait, atau admin terautentikasi.",
-      "Pemulihan data Design Studio dan Measurement Studio di perangkat/browser lain hanya dapat dilakukan menggunakan Kode Sinkronisasi Studio milik Anda.",
+      "Pemulihan data Design Studio dan Measurement Studio di perangkat atau browser lain dilakukan secara otomatis melalui akun pelanggan terautentikasi (kata sandi di-hash dengan PBKDF2-SHA256) atau melalui sesi pemesanan yang telah lolos verifikasi dua faktor di halaman Lacak Pesanan.",
     ],
   },
   {

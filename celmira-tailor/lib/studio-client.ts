@@ -1,10 +1,23 @@
 import type { DesignStudioDraft } from "@/lib/design-studio";
 import type { MeasurementStudioDraft } from "@/lib/measurement-studio";
+import {
+  STORAGE_KEYS,
+  loadMeasurementProfiles,
+  loadSavedDesigns,
+} from "@/lib/storage/tailor-store";
 import type {
   DesignStudioSavedConfig,
   MeasurementProfile,
   ReferenceAttachment,
 } from "@/lib/types/tailor";
+
+export type CustomerIdentitySummary = {
+  id: string;
+  email: string;
+  fullName: string;
+};
+
+export type AutoSyncState = "idle" | "saving" | "saved" | "error";
 
 export class StudioApiError extends Error {
   status: number;
@@ -38,11 +51,11 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   return data as T;
 }
 
-export async function fetchStudioSessionApi(): Promise<{
-  sessionId: string;
-  syncCode: string;
+export async function fetchCustomerAuthApi(): Promise<{
+  authenticated: boolean;
+  customer: CustomerIdentitySummary | null;
 }> {
-  const res = await fetch("/api/studio/session", {
+  const res = await fetch("/api/customer/auth/me", {
     method: "GET",
     credentials: "same-origin",
     cache: "no-store",
@@ -50,24 +63,51 @@ export async function fetchStudioSessionApi(): Promise<{
   return parseJsonResponse(res);
 }
 
-export async function restoreStudioSessionApi(syncCode: string): Promise<{
-  sessionId: string;
-  syncCode: string;
+export async function registerCustomerApi(payload: {
+  email: string;
+  password: string;
+  fullName?: string;
+}): Promise<{
+  customer: CustomerIdentitySummary;
   designs: DesignStudioSavedConfig[];
   profiles: MeasurementProfile[];
 }> {
-  const res = await fetch("/api/studio/session/restore", {
+  const res = await fetch("/api/customer/auth/register", {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ syncCode }),
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(res);
+}
+
+export async function loginCustomerApi(payload: {
+  email: string;
+  password: string;
+}): Promise<{
+  customer: CustomerIdentitySummary;
+  designs: DesignStudioSavedConfig[];
+  profiles: MeasurementProfile[];
+}> {
+  const res = await fetch("/api/customer/auth/login", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(res);
+}
+
+export async function logoutCustomerApi(): Promise<{ ok: true }> {
+  const res = await fetch("/api/customer/auth/logout", {
+    method: "POST",
+    credentials: "same-origin",
   });
   return parseJsonResponse(res);
 }
 
 export async function fetchSavedDesignsApi(): Promise<{
   designs: DesignStudioSavedConfig[];
-  syncCode: string;
 }> {
   const res = await fetch("/api/studio/designs", {
     method: "GET",
@@ -79,7 +119,7 @@ export async function fetchSavedDesignsApi(): Promise<{
 
 export async function saveDesignApi(
   draft: DesignStudioDraft
-): Promise<{ design: DesignStudioSavedConfig; syncCode?: string }> {
+): Promise<{ design: DesignStudioSavedConfig }> {
   const isUpdate = Boolean(draft.id && draft.id.startsWith("dsn-"));
   const url = isUpdate
     ? `/api/studio/designs/${encodeURIComponent(draft.id!)}`
@@ -120,7 +160,6 @@ export async function uploadStudioReferenceFileApi(
 
 export async function fetchMeasurementProfilesApi(): Promise<{
   profiles: MeasurementProfile[];
-  syncCode: string;
 }> {
   const res = await fetch("/api/studio/measurements", {
     method: "GET",
@@ -132,7 +171,7 @@ export async function fetchMeasurementProfilesApi(): Promise<{
 
 export async function saveMeasurementProfileApi(
   draft: MeasurementStudioDraft
-): Promise<{ profile: MeasurementProfile; syncCode?: string }> {
+): Promise<{ profile: MeasurementProfile }> {
   const isUpdate = Boolean(draft.id && draft.id.startsWith("mprof-"));
   const url = isUpdate
     ? `/api/studio/measurements/${encodeURIComponent(draft.id!)}`
@@ -152,4 +191,65 @@ export async function deleteMeasurementProfileApi(profileId: string): Promise<{ 
     credentials: "same-origin",
   });
   return parseJsonResponse(res);
+}
+
+/**
+ * Memigrasikan data lama Design Studio & Measurement Studio dari localStorage ke server D1/R2
+ * secara aman & idempotent. Data localStorage TIDAK dihapus sampai server mengonfirmasi
+ * keberhasilan dan mengembalikan daftar data yang terverifikasi.
+ */
+export async function migrateLegacyStudioDataIfNeeded(): Promise<{
+  ran: boolean;
+  designs?: DesignStudioSavedConfig[];
+  profiles?: MeasurementProfile[];
+}> {
+  if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
+    return { ran: false };
+  }
+
+  const localDesigns = loadSavedDesigns();
+  const localProfiles = loadMeasurementProfiles();
+  if (localDesigns.length === 0 && localProfiles.length === 0) {
+    return { ran: false };
+  }
+
+  const res = await fetch("/api/studio/migrate", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      designs: localDesigns,
+      profiles: localProfiles,
+    }),
+  });
+
+  const data = await parseJsonResponse<{
+    ok: boolean;
+    migratedDesigns: number;
+    migratedProfiles: number;
+    designs: DesignStudioSavedConfig[];
+    profiles: MeasurementProfile[];
+  }>(res);
+
+  // Verifikasi respons server sebelum membersihkan cache lokal lama
+  if (data.ok && Array.isArray(data.designs) && Array.isArray(data.profiles)) {
+    const designsVerified = localDesigns.length === 0 || data.designs.length > 0;
+    const profilesVerified = localProfiles.length === 0 || data.profiles.length > 0;
+    try {
+      if (designsVerified && localDesigns.length > 0) {
+        window.localStorage.removeItem(STORAGE_KEYS.designs);
+      }
+      if (profilesVerified && localProfiles.length > 0) {
+        window.localStorage.removeItem(STORAGE_KEYS.measurements);
+      }
+    } catch {
+      // Abaikan jika browser membatasi akses storage
+    }
+  }
+
+  return {
+    ran: true,
+    designs: data.designs,
+    profiles: data.profiles,
+  };
 }

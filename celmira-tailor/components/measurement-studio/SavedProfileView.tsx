@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { MannequinPreview } from "@/components/measurement-studio/MannequinPreview";
-import { StudioSyncPanel } from "@/components/studio/StudioSyncPanel";
+import { AutoSyncStatusBar } from "@/components/studio/AutoSyncStatusBar";
 import { ButtonLink, buttonClass } from "@/components/ui/ButtonLink";
 import { ArrowLeft, ArrowRight, ChatIcon, CheckIcon, TrashIcon } from "@/components/ui/icons";
 import { buildChatHref } from "@/lib/chat";
@@ -13,6 +13,7 @@ import {
   getMeasurementTemplateById,
   summarizeMeasurementProfile,
 } from "@/lib/measurement-studio";
+import type { AutoSyncState, CustomerIdentitySummary } from "@/lib/studio-client";
 import type {
   DesignStudioSavedConfig,
   MeasurementProfile,
@@ -23,16 +24,18 @@ type SavedProfileViewProps = {
   profile: MeasurementProfile;
   profiles: MeasurementProfile[];
   templates: MeasurementTemplateConfig[];
-  syncCode: string | null;
+  syncState: AutoSyncState;
+  syncError?: string | null;
+  lastSavedAt?: string | null;
   statusMessage?: string | null;
   onSelectProfile: (profile: MeasurementProfile) => void;
   onCreateNewProfile: () => void;
   onEditProfile: (profile: MeasurementProfile) => void;
   onDeleteProfile: (profile: MeasurementProfile) => void;
-  onRestoredSession: (payload: {
-    syncCode: string;
-    designs: DesignStudioSavedConfig[];
-    profiles: MeasurementProfile[];
+  onAccountSynced: (payload: {
+    customer: CustomerIdentitySummary | null;
+    designs?: DesignStudioSavedConfig[];
+    profiles?: MeasurementProfile[];
   }) => void;
 };
 
@@ -40,13 +43,15 @@ export function SavedProfileView({
   profile,
   profiles,
   templates,
-  syncCode,
+  syncState,
+  syncError,
+  lastSavedAt,
   statusMessage,
   onSelectProfile,
   onCreateNewProfile,
   onEditProfile,
   onDeleteProfile,
-  onRestoredSession,
+  onAccountSynced,
 }: SavedProfileViewProps) {
   const activeTemplate = getMeasurementTemplateById(profile.templateId, templates);
   const measurementRows = summarizeMeasurementProfile(profile, templates);
@@ -61,15 +66,15 @@ export function SavedProfileView({
               <p className="eyebrow">Profil Ukuran Tersimpan</p>
               <span className="inline-flex items-center gap-1 rounded-full bg-espresso px-3 py-1 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-ivory">
                 <CheckIcon className="h-3.5 w-3.5" />
-                Tersinkronisasi Server
+                Siap Digunakan
               </span>
             </div>
             <h1 className="text-balance text-[2rem] leading-[1.12] text-espresso sm:text-[2.6rem]">
               {profile.label}
             </h1>
             <p className="max-w-xl text-sm leading-relaxed text-muted">
-              Profil ukuran Anda tersimpan di database server Celmira dan dapat langsung dipakai
-              kembali untuk pesanan baru.
+              Profil ukuran Anda tersimpan otomatis di server Celmira dan dapat langsung dipakai
+              kembali untuk pesanan berikutnya.
             </p>
           </div>
 
@@ -83,10 +88,11 @@ export function SavedProfileView({
         </div>
 
         <div className="mb-6">
-          <StudioSyncPanel
-            contextLabel="Measurement Studio"
-            onRestored={onRestoredSession}
-            syncCode={syncCode}
+          <AutoSyncStatusBar
+            lastSavedAt={lastSavedAt ?? profile.updatedAt}
+            onAccountSynced={onAccountSynced}
+            syncError={syncError}
+            syncState={syncState === "idle" ? "saved" : syncState}
           />
         </div>
 

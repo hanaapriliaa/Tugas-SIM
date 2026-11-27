@@ -2,7 +2,6 @@ import type { MeasurementStudioDraft } from "@/lib/measurement-studio";
 import { getOrCreateCustomerSession } from "@/lib/server/auth";
 import { getChatEnv } from "@/lib/server/cf-env";
 import {
-  getOrCreateStudioSyncCode,
   listMeasurementProfilesInDb,
   saveMeasurementProfileInDb,
 } from "@/lib/server/studio-repo";
@@ -10,10 +9,7 @@ import {
 export async function GET(request: Request) {
   const env = getChatEnv();
   const { session, setCookieHeader } = await getOrCreateCustomerSession(request, env.DB);
-  const [profiles, syncCode] = await Promise.all([
-    listMeasurementProfilesInDb(env.DB, session.id),
-    getOrCreateStudioSyncCode(env.DB, session.id),
-  ]);
+  const profiles = await listMeasurementProfilesInDb(env.DB, session.id);
 
   const headers = new Headers({
     "content-type": "application/json",
@@ -23,7 +19,7 @@ export async function GET(request: Request) {
     headers.append("set-cookie", setCookieHeader);
   }
 
-  return new Response(JSON.stringify({ profiles, syncCode }), { status: 200, headers });
+  return new Response(JSON.stringify({ profiles }), { status: 200, headers });
 }
 
 export async function POST(request: Request) {
@@ -49,8 +45,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const syncCode = await getOrCreateStudioSyncCode(env.DB, session.id);
-
   const headers = new Headers({
     "content-type": "application/json",
     "cache-control": "no-store",
@@ -59,8 +53,5 @@ export async function POST(request: Request) {
     headers.append("set-cookie", setCookieHeader);
   }
 
-  return new Response(
-    JSON.stringify({ profile: saved.profile, syncCode }),
-    { status: 201, headers }
-  );
+  return new Response(JSON.stringify({ profile: saved.profile }), { status: 201, headers });
 }
