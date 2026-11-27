@@ -93,10 +93,20 @@ export function OrderConfirmationView({
       </div>
 
       <div className="mt-5 rounded-2xl border border-cocoa/15 bg-ivory/80 p-4 text-xs leading-relaxed text-muted">
-        <strong className="font-semibold text-espresso">Catatan penyimpanan lokal:</strong>{" "}
-        Pengajuan ini tersimpan pada penyimpanan browser lokal perangkat Anda untuk alur aplikasi
-        saat ini. Integrasi server, database PostgreSQL, dan notifikasi WhatsApp resmi akan aktif
-        pada tahap backend.
+        {order.persistenceMode === "cloudflare-d1" ? (
+          <>
+            <strong className="font-semibold text-espresso">Tersimpan di server Celmira Tailor:</strong>{" "}
+            Pesanan Anda telah dicatat ke database server (Cloudflare D1) dan langsung terlihat di
+            Panel Admin. Anda dapat memantau penawaran harga, invoice DP/pelunasan, dan progres
+            produksi langsung dari halaman Lacak Pesanan di perangkat mana saja menggunakan Kode
+            Referensi dan identitas verifikasi.
+          </>
+        ) : (
+          <>
+            <strong className="font-semibold text-espresso">Catatan penyimpanan lokal:</strong>{" "}
+            Pengajuan ini tersimpan pada penyimpanan browser lokal perangkat Anda.
+          </>
+        )}
       </div>
 
       <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

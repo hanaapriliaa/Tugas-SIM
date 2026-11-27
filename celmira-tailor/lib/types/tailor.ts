@@ -44,6 +44,7 @@ export type ReferenceAttachment = {
   size: number;
   mimeType: string;
   kind: "image" | "pdf";
+  url?: string;
   previewDataUrl?: string;
   note?: string;
 };
@@ -312,6 +313,8 @@ export type OrderHistoryEvent = {
  * Tidak menyimpan QRIS palsu maupun nomor rekening fiktif secara bawaan.
  */
 export type AdminPaymentConfig = {
+  qrisFileId?: string;
+  qrisImageUrl?: string;
   qrisImageDataUrl?: string;
   qrisFileName?: string;
   qrisMerchantName?: string;
@@ -327,7 +330,7 @@ export type SubmittedOrder = {
   trackingAccessCode: string;
   createdAt: string;
   updatedAt: string;
-  persistenceMode: "local-browser";
+  persistenceMode: "local-browser" | "cloudflare-d1";
   status: OrderStatus;
   productionStage: ProductionStage;
   categoryId: GarmentCategoryId;

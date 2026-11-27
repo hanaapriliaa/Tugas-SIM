@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { InvoicePaymentPanel } from "@/components/track/InvoicePaymentPanel";
 import { OrderHistoryLog } from "@/components/track/OrderHistoryLog";
 import { ProductionTimeline } from "@/components/track/ProductionTimeline";
@@ -16,21 +16,24 @@ import {
   ShieldIcon,
 } from "@/components/ui/icons";
 import { buildChatHref } from "@/lib/chat";
+import { startChatRealtime } from "@/lib/chat-realtime";
 import {
   ORDER_STATUS_META,
   createDefaultAdminPaymentConfig,
-  customerRespondToQuote,
-  customerUploadPaymentProof,
   formatDateOnlyId,
   formatDateTimeId,
   getPaymentSummaryBadge,
   getProductionStageMeta,
   maskOrderContact,
-  verifyOrderTrackingAccess,
 } from "@/lib/order-tracking";
 import {
+  fetchTrackedOrderApi,
+  respondToQuoteApi,
+  uploadPaymentProofApi,
+  verifyTrackingOrderApi,
+} from "@/lib/orders-client";
+import {
   clearOrderVerifiedInSession,
-  loadAdminPaymentConfig,
   loadSubmittedOrders,
   markOrderVerifiedInSession,
   updateSubmittedOrder,
@@ -44,7 +47,9 @@ import type {
 export function OrderTrackingWorkspace() {
   const searchParams = useSearchParams();
 
-  const [orders, setOrders] = useState<SubmittedOrder[]>([]);
+  // Daftar singkat pesanan yang pernah dibuat di perangkat ini (hanya untuk membantu mengisi kode)
+  const [recentOrders, setRecentOrders] = useState<SubmittedOrder[]>([]);
+  const [activeOrder, setActiveOrder] = useState<SubmittedOrder | null>(null);
   const [paymentConfig, setPaymentConfig] = useState<AdminPaymentConfig>(
     createDefaultAdminPaymentConfig
   );
@@ -53,18 +58,26 @@ export function OrderTrackingWorkspace() {
   const [orderCodeInput, setOrderCodeInput] = useState("");
   const [verifierInput, setVerifierInput] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
-  const [verifiedOrderId, setVerifiedOrderId] = useState<string | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
 
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const syncStore = () => {
-      setOrders(loadSubmittedOrders());
-      setPaymentConfig(loadAdminPaymentConfig());
-    };
+  const refreshActiveOrder = useCallback(async (orderCode: string) => {
+    try {
+      const data = await fetchTrackedOrderApi(orderCode);
+      setActiveOrder(data.order);
+      setPaymentConfig(data.paymentConfig);
+      updateSubmittedOrder(data.order);
+      setRecentOrders(loadSubmittedOrders());
+    } catch {
+      // Abaikan error sementara saat polling/reconnect
+    }
+  }, []);
 
-    syncStore();
+  useEffect(() => {
+    setRecentOrders(loadSubmittedOrders());
     setHydrated(true);
 
     const urlCode =
@@ -73,97 +86,129 @@ export function OrderTrackingWorkspace() {
         ? new URLSearchParams(window.location.search).get("code")
         : null);
     if (urlCode) {
-      setOrderCodeInput(urlCode.trim().toUpperCase());
+      const cleanCode = urlCode.trim().toUpperCase();
+      setOrderCodeInput(cleanCode);
+      // Jika pelanggan baru saja membuat pesanan atau sudah memiliki sesi tracking server, langsung muat
+      void fetchTrackedOrderApi(cleanCode)
+        .then((data) => {
+          setActiveOrder(data.order);
+          setPaymentConfig(data.paymentConfig);
+          markOrderVerifiedInSession(data.order.orderCode);
+          updateSubmittedOrder(data.order);
+          setRecentOrders(loadSubmittedOrders());
+        })
+        .catch(() => {
+          // Belum terverifikasi: biarkan form 2FA tampil dengan kode terisi
+        });
     }
-
-    const onStorage = () => syncStore();
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
   }, [searchParams]);
 
-  const activeOrder = useMemo(
-    () => orders.find((item) => item.id === verifiedOrderId) ?? null,
-    [orders, verifiedOrderId]
-  );
+  // Sinkronisasi real-time saat admin mengirim penawaran, memverifikasi DP, atau memperbarui tahap produksi
+  useEffect(() => {
+    if (!activeOrder) return;
+    const targetCode = activeOrder.orderCode;
+    return startChatRealtime({
+      role: "customer",
+      enabled: true,
+      onEvent: (event) => {
+        if (
+          event.type === "order:updated" &&
+          (!event.orderCode || event.orderCode.toUpperCase() === targetCode.toUpperCase())
+        ) {
+          void refreshActiveOrder(targetCode);
+        }
+      },
+      onSyncNeeded: () => refreshActiveOrder(targetCode),
+    });
+  }, [activeOrder?.orderCode, refreshActiveOrder]);
 
-  const handleVerifyLookup = (event: FormEvent<HTMLFormElement>) => {
+  const handleVerifyLookup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLookupError(null);
     setActionFeedback(null);
     setActionError(null);
+    setIsLookingUp(true);
 
-    const latestOrders = loadSubmittedOrders();
-    setOrders(latestOrders);
-    setPaymentConfig(loadAdminPaymentConfig());
-
-    const result = verifyOrderTrackingAccess(latestOrders, orderCodeInput, verifierInput);
-    if (!result.ok) {
-      setLookupError(result.error);
-      setVerifiedOrderId(null);
-      return;
+    try {
+      const data = await verifyTrackingOrderApi(orderCodeInput, verifierInput);
+      setActiveOrder(data.order);
+      setPaymentConfig(data.paymentConfig);
+      markOrderVerifiedInSession(data.order.orderCode);
+      updateSubmittedOrder(data.order);
+      setRecentOrders(loadSubmittedOrders());
+    } catch (err) {
+      setLookupError(
+        err instanceof Error
+          ? err.message
+          : "Kombinasi nomor pesanan dan identitas verifikasi tidak cocok."
+      );
+      setActiveOrder(null);
+    } finally {
+      setIsLookingUp(false);
     }
-
-    setVerifiedOrderId(result.order.id);
-    markOrderVerifiedInSession(result.order.orderCode);
   };
 
-  const handleRespondQuote = (decision: "approve" | "reject", rejectionReason?: string) => {
+  const handleRespondQuote = async (decision: "approve" | "reject", rejectionReason?: string) => {
     if (!activeOrder) return;
     setActionFeedback(null);
     setActionError(null);
+    setIsBusy(true);
 
-    const result = customerRespondToQuote(
-      activeOrder,
-      { decision, rejectionReason },
-      new Date(),
-      paymentConfig.dpWindowHours
-    );
-    if (!result.ok) {
-      setActionError(result.error);
-      return;
+    try {
+      const { order: saved } = await respondToQuoteApi(
+        activeOrder.orderCode,
+        decision,
+        rejectionReason
+      );
+      setActiveOrder(saved);
+      updateSubmittedOrder(saved);
+      setRecentOrders(loadSubmittedOrders());
+      setActionFeedback(
+        decision === "approve"
+          ? `Penawaran disetujui. Invoice DP ${saved.invoice.dpInvoiceNumber ?? ""} telah diterbitkan dengan batas waktu ${paymentConfig.dpWindowHours} jam.`
+          : "Penawaran telah ditolak dan tercatat pada riwayat pesanan."
+      );
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Gagal memproses keputusan penawaran."
+      );
+    } finally {
+      setIsBusy(false);
     }
-
-    const saved = updateSubmittedOrder(result.order);
-    setOrders(loadSubmittedOrders());
-    setVerifiedOrderId(saved.id);
-    setActionFeedback(
-      decision === "approve"
-        ? `Penawaran disetujui. Invoice DP ${saved.invoice.dpInvoiceNumber ?? ""} telah diterbitkan dengan batas waktu ${paymentConfig.dpWindowHours} jam.`
-        : "Penawaran telah ditolak dan tercatat pada riwayat pesanan."
-    );
   };
 
-  const handleUploadProof = (payload: {
+  const handleUploadProof = async (payload: {
     stage: PaymentStage;
-    proofFileName: string;
-    proofMimeType: string;
-    proofSize: number;
-    proofPreviewDataUrl?: string;
+    file: File;
     customerNote?: string;
   }) => {
     if (!activeOrder) return;
     setActionFeedback(null);
     setActionError(null);
+    setIsBusy(true);
 
-    const result = customerUploadPaymentProof(activeOrder, payload, new Date());
-    if (!result.ok) {
-      setActionError(result.error);
-      return;
+    try {
+      const { order: saved } = await uploadPaymentProofApi(activeOrder.orderCode, payload);
+      setActiveOrder(saved);
+      updateSubmittedOrder(saved);
+      setRecentOrders(loadSubmittedOrders());
+      setActionFeedback(
+        payload.stage === "dp"
+          ? "Bukti pembayaran DP berhasil diunggah ke server dan sedang menunggu verifikasi manual oleh admin."
+          : "Bukti pelunasan berhasil diunggah ke server dan sedang menunggu verifikasi manual oleh admin."
+      );
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Gagal mengunggah bukti pembayaran."
+      );
+    } finally {
+      setIsBusy(false);
     }
-
-    const saved = updateSubmittedOrder(result.order);
-    setOrders(loadSubmittedOrders());
-    setVerifiedOrderId(saved.id);
-    setActionFeedback(
-      payload.stage === "dp"
-        ? "Bukti pembayaran DP berhasil diunggah dan sedang menunggu verifikasi manual oleh admin."
-        : "Bukti pelunasan berhasil diunggah dan sedang menunggu verifikasi manual oleh admin."
-    );
   };
 
   const handleLockOrder = () => {
     clearOrderVerifiedInSession(activeOrder?.orderCode);
-    setVerifiedOrderId(null);
+    setActiveOrder(null);
     setVerifierInput("");
     setActionFeedback(null);
     setActionError(null);
@@ -250,9 +295,13 @@ export function OrderTrackingWorkspace() {
                 <LockIcon className="h-3.5 w-3.5 text-cocoa" />
                 Dilindungi verifikasi dua faktor (kode pesanan + identitas terdaftar)
               </p>
-              <button className={buttonClass("solid")} type="submit">
+              <button
+                className={buttonClass("solid")}
+                disabled={isLookingUp}
+                type="submit"
+              >
                 <SearchIcon className="h-4 w-4" />
-                Buka Tracking Pesanan
+                {isLookingUp ? "Memverifikasi..." : "Buka Tracking Pesanan"}
               </button>
             </div>
           </form>
@@ -265,17 +314,18 @@ export function OrderTrackingWorkspace() {
               Pesanan di Perangkat Ini
             </h2>
             <span className="rounded-full border border-cocoa/18 bg-cream px-2.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-cocoa">
-              {hydrated ? `${orders.length} pesanan` : "Memuat..."}
+              {hydrated ? `${recentOrders.length} pesanan` : "Memuat..."}
             </span>
           </div>
 
           {!hydrated ? (
-            <p className="mt-4 text-xs text-muted">Memuat daftar pesanan lokal...</p>
-          ) : orders.length === 0 ? (
+            <p className="mt-4 text-xs text-muted">Memuat riwayat kode pesanan...</p>
+          ) : recentOrders.length === 0 ? (
             <div className="mt-4 space-y-4">
               <p className="text-xs leading-relaxed text-muted">
-                Belum ada pengajuan pesanan yang tersimpan di browser ini. Anda dapat membuat
-                pesanan jahit custom terlebih dahulu melalui Booking Flow.
+                Belum ada riwayat pesanan di perangkat ini. Anda tetap dapat melacak pesanan yang
+                dibuat di perangkat lain dengan memasukkan Nomor Pesanan dan WhatsApp/Kode Akses
+                pada formulir di samping.
               </p>
               <Link className={buttonClass("outline")} href="/orders">
                 Buat Pesanan Custom
@@ -289,7 +339,7 @@ export function OrderTrackingWorkspace() {
                 WhatsApp terdaftar atau Kode Akses Tracking untuk membuka detailnya.
               </p>
               <ul className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                {orders.map((item) => {
+                {recentOrders.map((item) => {
                   const statusMeta = ORDER_STATUS_META[item.status];
                   const isSelectedCode =
                     orderCodeInput.trim().toUpperCase() === item.orderCode.toUpperCase();
@@ -483,6 +533,7 @@ export function OrderTrackingWorkspace() {
               <InvoicePaymentPanel
                 errorMessage={actionError}
                 feedbackMessage={actionFeedback}
+                isBusy={isBusy}
                 onRespondQuote={handleRespondQuote}
                 onUploadProof={handleUploadProof}
                 order={activeOrder}
@@ -500,14 +551,13 @@ export function OrderTrackingWorkspace() {
         </div>
       ) : null}
 
-      {/* Catatan jujur terkait status integrasi backend */}
+      {/* Status integrasi backend server */}
       <div className="mt-12 flex flex-col gap-4 rounded-[1.5rem] border border-cocoa/16 bg-cream/40 p-5 text-xs leading-relaxed text-muted sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-3xl">
-          <strong className="font-semibold text-espresso">Catatan Mode Penyimpanan Lokal:</strong>{" "}
-          Alur tracking pesanan, penawaran harga, invoice DP/pelunasan, unggah bukti, dan
-          verifikasi admin saat ini menggunakan penyimpanan browser lokal untuk pengujian alur
-          antar-halaman. Sinkronisasi multi-perangkat, database PostgreSQL, penyimpanan file aman,
-          serta autentikasi server akan diaktifkan pada Tahap 6.
+          <strong className="font-semibold text-espresso">Sinkronisasi Server Aktif:</strong>{" "}
+          Data pesanan, penawaran harga, invoice DP/pelunasan, bukti pembayaran (R2 privat), dan
+          progres 10 tahap produksi tersimpan langsung di server Celmira Tailor (Cloudflare D1)
+          dengan pembaruan real-time antar-perangkat.
         </p>
         <div className="flex shrink-0 flex-wrap gap-3">
           <Link className="link-underline" href="/orders">

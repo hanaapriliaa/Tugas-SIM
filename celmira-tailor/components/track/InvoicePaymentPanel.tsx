@@ -31,18 +31,19 @@ import type {
 
 type ProofUploadPayload = {
   stage: PaymentStage;
-  proofFileName: string;
-  proofMimeType: string;
-  proofSize: number;
-  proofPreviewDataUrl?: string;
+  file: File;
   customerNote?: string;
 };
 
 type InvoicePaymentPanelProps = {
   order: SubmittedOrder;
   paymentConfig: AdminPaymentConfig;
-  onRespondQuote: (decision: "approve" | "reject", rejectionReason?: string) => void;
-  onUploadProof: (payload: ProofUploadPayload) => void;
+  onRespondQuote: (
+    decision: "approve" | "reject",
+    rejectionReason?: string
+  ) => void | Promise<void>;
+  onUploadProof: (payload: ProofUploadPayload) => void | Promise<void>;
+  isBusy?: boolean;
   feedbackMessage?: string | null;
   errorMessage?: string | null;
 };
@@ -66,11 +67,12 @@ function verificationStatusBadge(record?: PaymentRecord): {
 type PaymentProofUploaderProps = {
   stage: PaymentStage;
   disabled: boolean;
-  onUpload: (payload: ProofUploadPayload) => void;
+  onUpload: (payload: ProofUploadPayload) => void | Promise<void>;
 };
 
 function PaymentProofUploader({ stage, disabled, onUpload }: PaymentProofUploaderProps) {
   const [selectedFile, setSelectedFile] = useState<{
+    file: File;
     name: string;
     mimeType: string;
     size: number;
@@ -98,6 +100,7 @@ function PaymentProofUploader({ stage, disabled, onUpload }: PaymentProofUploade
       const isPdf = file.type.toLowerCase() === "application/pdf";
       const previewDataUrl = isPdf ? undefined : await createImageThumbnail(file);
       setSelectedFile({
+        file,
         name: file.name,
         mimeType: file.type,
         size: file.size,
@@ -108,17 +111,14 @@ function PaymentProofUploader({ stage, disabled, onUpload }: PaymentProofUploade
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedFile) {
       setFileError("Pilih file bukti pembayaran (JPG, PNG, WEBP, atau PDF) terlebih dahulu.");
       return;
     }
-    onUpload({
+    await onUpload({
       stage,
-      proofFileName: selectedFile.name,
-      proofMimeType: selectedFile.mimeType,
-      proofSize: selectedFile.size,
-      proofPreviewDataUrl: selectedFile.previewDataUrl,
+      file: selectedFile.file,
       customerNote: customerNote.trim() || undefined,
     });
     setSelectedFile(null);
@@ -199,10 +199,10 @@ function PaymentProofUploader({ stage, disabled, onUpload }: PaymentProofUploade
           <button
             className={buttonClass("solid")}
             disabled={disabled || isReading || !selectedFile}
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             type="button"
           >
-            Kirim Bukti untuk Verifikasi Admin
+            {disabled ? "Mengunggah..." : "Kirim Bukti untuk Verifikasi Admin"}
           </button>
         </div>
       </div>
@@ -211,13 +211,14 @@ function PaymentProofUploader({ stage, disabled, onUpload }: PaymentProofUploade
 }
 
 function OfficialQrisBox({ config }: { config: AdminPaymentConfig }) {
+  const qrisSrc = config.qrisImageUrl ?? config.qrisImageDataUrl;
   return (
     <div className="rounded-2xl border border-cocoa/15 bg-cream/55 p-4 sm:p-5">
       <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
         QRIS Resmi Celmira Boutique
       </p>
 
-      {config.qrisImageDataUrl ? (
+      {qrisSrc ? (
         <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="w-full max-w-[190px] shrink-0 overflow-hidden rounded-2xl border border-cocoa/15 bg-white p-2.5">
             <img
@@ -227,7 +228,7 @@ function OfficialQrisBox({ config }: { config: AdminPaymentConfig }) {
                   : "QRIS resmi Celmira Boutique"
               }
               className="h-auto w-full object-contain"
-              src={config.qrisImageDataUrl}
+              src={qrisSrc}
             />
           </div>
           <div className="space-y-2 text-xs leading-relaxed text-muted">
@@ -278,13 +279,27 @@ function UploadedProofSummary({ record }: { record: PaymentRecord }) {
       </div>
 
       {record.proofPreviewDataUrl ? (
-        <div className="mt-3 overflow-hidden rounded-xl border border-cocoa/12 bg-cream/30 p-2">
-          <img
-            alt={`Bukti pembayaran ${record.proofFileName}`}
-            className="mx-auto max-h-48 rounded-lg object-contain"
-            src={record.proofPreviewDataUrl}
-          />
-        </div>
+        record.proofMimeType === "application/pdf" ? (
+          <div className="mt-3">
+            <a
+              className="inline-flex items-center gap-1.5 rounded-full border border-cocoa/25 bg-cream/60 px-3.5 py-1.5 font-medium text-espresso transition-colors hover:border-espresso"
+              href={record.proofPreviewDataUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <FileTextIcon className="h-3.5 w-3.5 text-cocoa" />
+              Buka Dokumen PDF Bukti Bayar
+            </a>
+          </div>
+        ) : (
+          <div className="mt-3 overflow-hidden rounded-xl border border-cocoa/12 bg-cream/30 p-2">
+            <img
+              alt={`Bukti pembayaran ${record.proofFileName}`}
+              className="mx-auto max-h-48 rounded-lg object-contain"
+              src={record.proofPreviewDataUrl}
+            />
+          </div>
+        )
       ) : null}
 
       {record.customerNote ? (
@@ -317,6 +332,7 @@ export function InvoicePaymentPanel({
   paymentConfig,
   onRespondQuote,
   onUploadProof,
+  isBusy = false,
   feedbackMessage,
   errorMessage,
 }: InvoicePaymentPanelProps) {
@@ -470,13 +486,15 @@ export function InvoicePaymentPanel({
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               className={buttonClass("solid")}
-              onClick={() => onRespondQuote("approve")}
+              disabled={isBusy}
+              onClick={() => void onRespondQuote("approve")}
               type="button"
             >
-              Setujui Penawaran & Terbitkan Invoice DP
+              {isBusy ? "Memproses..." : "Setujui Penawaran & Terbitkan Invoice DP"}
             </button>
             <button
               className={buttonClass("outline")}
+              disabled={isBusy}
               onClick={() => setShowRejectBox((prev) => !prev)}
               type="button"
             >
@@ -614,7 +632,7 @@ export function InvoicePaymentPanel({
 
           {canUploadDp ? (
             <PaymentProofUploader
-              disabled={isCancelled}
+              disabled={isCancelled || isBusy}
               onUpload={onUploadProof}
               stage="dp"
             />
@@ -699,7 +717,7 @@ export function InvoicePaymentPanel({
 
               {canUploadSettlement ? (
                 <PaymentProofUploader
-                  disabled={isCancelled}
+                  disabled={isCancelled || isBusy}
                   onUpload={onUploadProof}
                   stage="pelunasan"
                 />

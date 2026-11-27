@@ -58,7 +58,11 @@ export function detectImageMimeFromBytes(bytes: Uint8Array): AllowedImageMime | 
 }
 
 export function sanitizeAttachmentFileName(rawName: string): string {
-  const base = rawName.replace(/[\\/]/g, "_").replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  const base = rawName
+    .replace(/[\\/]/g, "_")
+    .replace(/\.{2,}/g, "_")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .trim();
   return (base || "lampiran-chat").slice(0, 120);
 }
 

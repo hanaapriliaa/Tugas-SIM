@@ -152,7 +152,7 @@ export function validateStep3(draft: OrderDraft): StepValidationResult {
   const requiredKeys = getRequiredMeasurementKeys(draft.categoryId);
 
   for (const rule of MEASUREMENT_RULES) {
-    const raw = measurements.values[rule.key].trim();
+    const raw = String(measurements.values?.[rule.key] ?? "").trim();
     const isRequired = requiredKeys.includes(rule.key);
 
     if (!raw) {

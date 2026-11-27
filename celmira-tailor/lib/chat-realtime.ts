@@ -1,8 +1,18 @@
 import type { ChatConnectionStatus } from "@/lib/types/tailor";
 
 export type ChatRealtimeEvent = {
-  type: "connected" | "pong" | "message:new" | "messages:read" | "thread:updated" | "config:updated";
+  type:
+    | "connected"
+    | "pong"
+    | "message:new"
+    | "messages:read"
+    | "thread:updated"
+    | "config:updated"
+    | "order:updated";
   threadId?: string;
+  orderId?: string;
+  orderCode?: string;
+  status?: string;
   readerRole?: "customer" | "admin";
   readAt?: string;
   unreadByAdmin?: number;

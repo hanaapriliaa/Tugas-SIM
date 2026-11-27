@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import type { AdminOrderActionBody } from "@/app/api/admin/orders/[orderId]/action/route";
 import { OrderHistoryLog } from "@/components/track/OrderHistoryLog";
 import { StatusBadge } from "@/components/track/StatusBadge";
 import { buttonClass } from "@/components/ui/ButtonLink";
@@ -20,23 +21,15 @@ import {
   TruckIcon,
   UploadIcon,
 } from "@/components/ui/icons";
-import { createImageThumbnail, formatFileSize } from "@/lib/attachments";
+import { formatFileSize } from "@/lib/attachments";
 import { validateAttachmentFile } from "@/lib/booking-validation";
+import { startChatRealtime } from "@/lib/chat-realtime";
 import {
   ORDER_STATUS_META,
   PRODUCTION_STAGES,
-  adminCancelOrder,
-  adminExtendDpDeadline,
-  adminIssueSettlementInvoice,
-  adminSendQuote,
-  adminUpdateEstimatedCompletion,
-  adminUpdateFulfillment,
-  adminUpdateProductionStage,
-  adminVerifyPayment,
   canAdvanceToFulfillment,
   canStartProduction,
   createDefaultAdminPaymentConfig,
-  evaluateDpOverdueForReview,
   formatDateOnlyId,
   formatDateTimeId,
   formatRupiah,
@@ -46,14 +39,14 @@ import {
   getProductionStageIndex,
   getProductionStageMeta,
   isPaymentVerified,
-  type TransitionResult,
 } from "@/lib/order-tracking";
 import {
-  loadAdminPaymentConfig,
-  loadSubmittedOrders,
-  saveAdminPaymentConfig,
-  updateSubmittedOrder,
-} from "@/lib/storage/tailor-store";
+  deleteAdminQrisApi,
+  fetchAdminOrdersApi,
+  runAdminOrderActionApi,
+  updateAdminPaymentConfigApi,
+  uploadAdminQrisApi,
+} from "@/lib/orders-client";
 import type {
   AdminPaymentConfig,
   PaymentRecord,
@@ -119,12 +112,14 @@ export function AdminOrderManagement({
   // Feedback state
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isActionBusy, setIsActionBusy] = useState(false);
 
   // QRIS form state
   const [merchantNameInput, setMerchantNameInput] = useState("");
   const [instructionsInput, setInstructionsInput] = useState("");
   const [dpHoursInput, setDpHoursInput] = useState("24");
   const [qrisError, setQrisError] = useState<string | null>(null);
+  const [isQrisBusy, setIsQrisBusy] = useState(false);
 
   // Selected order action forms
   const [tailoringFeeInput, setTailoringFeeInput] = useState("");
@@ -147,31 +142,43 @@ export function AdminOrderManagement({
   const [trackingNumberInput, setTrackingNumberInput] = useState("");
   const [pickupNoteInput, setPickupNoteInput] = useState("");
 
-  const refreshFromStore = () => {
-    const loadedOrders = loadSubmittedOrders();
-    const loadedConfig = loadAdminPaymentConfig();
-    setOrders(loadedOrders);
-    setPaymentConfig(loadedConfig);
-    setMerchantNameInput(loadedConfig.qrisMerchantName ?? "");
-    setInstructionsInput(loadedConfig.paymentInstructions);
-    setDpHoursInput(String(loadedConfig.dpWindowHours));
-    return loadedOrders;
-  };
+  const refreshFromServer = useCallback(async (syncConfigInputs = false) => {
+    try {
+      const data = await fetchAdminOrdersApi();
+      setOrders(data.orders);
+      setPaymentConfig(data.paymentConfig);
+      if (syncConfigInputs) {
+        setMerchantNameInput(data.paymentConfig.qrisMerchantName ?? "");
+        setInstructionsInput(data.paymentConfig.paymentInstructions);
+        setDpHoursInput(String(data.paymentConfig.dpWindowHours));
+      }
+      setSelectedOrderId((prev) => {
+        if (prev && data.orders.some((item) => item.id === prev)) return prev;
+        return data.orders[0]?.id ?? null;
+      });
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Gagal memuat daftar pesanan dari server."
+      );
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadedOrders = refreshFromStore();
-    setHydrated(true);
-    if (loadedOrders.length > 0) {
-      setSelectedOrderId(loadedOrders[0].id);
-    }
+    void refreshFromServer(true);
 
-    const onStorage = () => {
-      setOrders(loadSubmittedOrders());
-      setPaymentConfig(loadAdminPaymentConfig());
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+    return startChatRealtime({
+      role: "admin",
+      enabled: true,
+      onEvent: (event) => {
+        if (event.type === "order:updated") {
+          void refreshFromServer(false);
+        }
+      },
+      onSyncNeeded: () => refreshFromServer(false),
+    });
+  }, [refreshFromServer]);
 
   useEffect(() => {
     if (!focusedOrderCode) return;
@@ -260,17 +267,26 @@ export function AdminOrderManagement({
     };
   }, [orders]);
 
-  const applyOrderTransition = (result: TransitionResult, successMessage: string) => {
+  const executeAdminAction = async (
+    orderId: string,
+    payload: AdminOrderActionBody,
+    successMessage: string
+  ) => {
     setFeedback(null);
     setErrorMessage(null);
-    if (!result.ok) {
-      setErrorMessage(result.error);
-      return;
+    setIsActionBusy(true);
+    try {
+      const { order: saved } = await runAdminOrderActionApi(orderId, payload);
+      setOrders((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+      setSelectedOrderId(saved.id);
+      setFeedback(successMessage);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Gagal memproses aksi pesanan di server."
+      );
+    } finally {
+      setIsActionBusy(false);
     }
-    const saved = updateSubmittedOrder(result.order);
-    setOrders(loadSubmittedOrders());
-    setSelectedOrderId(saved.id);
-    setFeedback(successMessage);
   };
 
   const handleQrisUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -289,48 +305,58 @@ export function AdminOrderManagement({
     }
 
     setQrisError(null);
-    const thumbnail = await createImageThumbnail(file);
-    if (!thumbnail) {
-      setQrisError("Gagal membaca gambar QRIS. Silakan coba file lain.");
-      return;
+    setIsQrisBusy(true);
+    try {
+      const { paymentConfig: updated } = await uploadAdminQrisApi(
+        file,
+        merchantNameInput.trim() || undefined
+      );
+      setPaymentConfig(updated);
+      setFeedback("QRIS resmi berhasil diunggah ke penyimpanan server dan aktif pada invoice pelanggan.");
+    } catch (err) {
+      setQrisError(
+        err instanceof Error ? err.message : "Gagal mengunggah gambar QRIS ke server."
+      );
+    } finally {
+      setIsQrisBusy(false);
     }
-
-    const updated = saveAdminPaymentConfig({
-      ...paymentConfig,
-      qrisImageDataUrl: thumbnail,
-      qrisFileName: file.name,
-      qrisMerchantName: merchantNameInput.trim() || paymentConfig.qrisMerchantName,
-      qrisUpdatedAt: new Date().toISOString(),
-      paymentInstructions: instructionsInput.trim() || paymentConfig.paymentInstructions,
-      dpWindowHours: Math.max(1, Number(dpHoursInput) || 24),
-    });
-    setPaymentConfig(updated);
-    setFeedback("QRIS resmi berhasil diunggah dan aktif ditampilkan pada invoice pelanggan.");
   };
 
-  const handleSavePaymentSettings = () => {
+  const handleSavePaymentSettings = async () => {
     setQrisError(null);
-    const hours = Math.max(1, Math.min(168, Number(dpHoursInput) || 24));
-    const updated = saveAdminPaymentConfig({
-      ...paymentConfig,
-      qrisMerchantName: merchantNameInput.trim() || undefined,
-      paymentInstructions: instructionsInput.trim() || createDefaultAdminPaymentConfig().paymentInstructions,
-      dpWindowHours: hours,
-    });
-    setPaymentConfig(updated);
-    setDpHoursInput(String(hours));
-    setFeedback("Pengaturan pembayaran resmi telah disimpan.");
+    setIsQrisBusy(true);
+    try {
+      const hours = Math.max(1, Math.min(168, Number(dpHoursInput) || 24));
+      const { paymentConfig: updated } = await updateAdminPaymentConfigApi({
+        qrisMerchantName: merchantNameInput.trim() || null,
+        paymentInstructions:
+          instructionsInput.trim() || createDefaultAdminPaymentConfig().paymentInstructions,
+        dpWindowHours: hours,
+      });
+      setPaymentConfig(updated);
+      setDpHoursInput(String(updated.dpWindowHours));
+      setFeedback("Pengaturan pembayaran resmi telah disimpan di server.");
+    } catch (err) {
+      setQrisError(
+        err instanceof Error ? err.message : "Gagal menyimpan pengaturan pembayaran."
+      );
+    } finally {
+      setIsQrisBusy(false);
+    }
   };
 
-  const handleClearQris = () => {
-    const updated = saveAdminPaymentConfig({
-      ...paymentConfig,
-      qrisImageDataUrl: undefined,
-      qrisFileName: undefined,
-      qrisUpdatedAt: undefined,
-    });
-    setPaymentConfig(updated);
-    setFeedback("QRIS dihapus. Halaman invoice pelanggan kini menampilkan status belum tersedia.");
+  const handleClearQris = async () => {
+    setQrisError(null);
+    setIsQrisBusy(true);
+    try {
+      const { paymentConfig: updated } = await deleteAdminQrisApi();
+      setPaymentConfig(updated);
+      setFeedback("QRIS dihapus dari server. Halaman invoice pelanggan kini menampilkan status belum tersedia.");
+    } catch (err) {
+      setQrisError(err instanceof Error ? err.message : "Gagal menghapus QRIS.");
+    } finally {
+      setIsQrisBusy(false);
+    }
   };
 
   const renderPaymentVerificationCard = (
@@ -397,13 +423,27 @@ export function AdminOrderManagement({
             ) : null}
 
             {record.proofPreviewDataUrl ? (
-              <div className="overflow-hidden rounded-xl border border-cocoa/12 bg-cream/30 p-2">
-                <img
-                  alt={`Bukti ${stage} ${record.proofFileName}`}
-                  className="mx-auto max-h-44 rounded-lg object-contain"
-                  src={record.proofPreviewDataUrl}
-                />
-              </div>
+              record.proofMimeType === "application/pdf" ? (
+                <div>
+                  <a
+                    className="inline-flex items-center gap-1.5 rounded-full border border-cocoa/25 bg-cream/60 px-3.5 py-1.5 font-medium text-espresso transition-colors hover:border-espresso"
+                    href={record.proofPreviewDataUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <FileTextIcon className="h-3.5 w-3.5 text-cocoa" />
+                    Buka Dokumen PDF Bukti Bayar
+                  </a>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-cocoa/12 bg-cream/30 p-2">
+                  <img
+                    alt={`Bukti ${stage} ${record.proofFileName}`}
+                    className="mx-auto max-h-44 rounded-lg object-contain"
+                    src={record.proofPreviewDataUrl}
+                  />
+                </div>
+              )
             ) : null}
 
             {record.verificationStatus === "menunggu_verifikasi_admin" ? (
@@ -417,14 +457,17 @@ export function AdminOrderManagement({
                 />
                 <div className="flex flex-wrap gap-2">
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-full bg-espresso px-4 py-2 text-xs font-medium text-ivory transition-colors hover:bg-cocoa"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-espresso px-4 py-2 text-xs font-medium text-ivory transition-colors hover:bg-cocoa disabled:opacity-60"
+                    disabled={isActionBusy}
                     onClick={() =>
-                      applyOrderTransition(
-                        adminVerifyPayment(order, {
+                      void executeAdminAction(
+                        order.id,
+                        {
+                          action: "verify_payment",
                           stage,
                           decision: "approve",
                           adminNote: noteValue,
-                        }),
+                        },
                         stage === "dp"
                           ? "DP 50% terverifikasi. Pesanan kini dapat masuk tahap produksi."
                           : "Pelunasan terverifikasi. Pesanan kini siap dikirim atau diambil."
@@ -436,14 +479,17 @@ export function AdminOrderManagement({
                     Verifikasi Pembayaran
                   </button>
                   <button
-                    className="rounded-full border border-red-800/30 bg-red-50 px-4 py-2 text-xs font-medium text-red-900 transition-colors hover:bg-red-100"
+                    className="rounded-full border border-red-800/30 bg-red-50 px-4 py-2 text-xs font-medium text-red-900 transition-colors hover:bg-red-100 disabled:opacity-60"
+                    disabled={isActionBusy}
                     onClick={() =>
-                      applyOrderTransition(
-                        adminVerifyPayment(order, {
+                      void executeAdminAction(
+                        order.id,
+                        {
+                          action: "verify_payment",
                           stage,
                           decision: "reject",
                           adminNote: noteValue,
-                        }),
+                        },
                         `Bukti ${stage === "dp" ? "DP" : "pelunasan"} ditolak dan pelanggan diminta mengunggah ulang.`
                       )
                     }
@@ -475,7 +521,7 @@ export function AdminOrderManagement({
               Pengelolaan Pesanan &amp; Invoice
             </p>
             <span className="rounded-full border border-cocoa/25 bg-cream px-3 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-cocoa">
-              Mode Penyimpanan Lokal (Tahap 4)
+              Backend Server Aktif (Cloudflare D1 &amp; R2)
             </span>
           </div>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl text-espresso sm:text-4xl">
@@ -503,14 +549,14 @@ export function AdminOrderManagement({
         </div>
       </div>
 
-      {/* Peringatan Autentikasi */}
+      {/* Info Status Backend */}
       <div className="mt-6 flex items-start gap-3 rounded-2xl border border-cocoa/18 bg-cream/60 p-4 text-xs leading-relaxed text-muted">
         <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-cocoa" />
         <p>
-          <strong className="font-semibold text-espresso">Catatan Tahap Pengembangan:</strong>{" "}
-          Panel admin ini belum dilindungi autentikasi server/role admin dan menyimpan perubahan
-          pada penyimpanan browser lokal perangkat ini. Database PostgreSQL, autentikasi admin,
-          dan storage upload aman akan diintegrasikan pada Tahap 6.
+          <strong className="font-semibold text-espresso">Terhubung ke Server Database:</strong>{" "}
+          Seluruh pesanan, penawaran, verifikasi bukti bayar, QRIS resmi, dan progres produksi
+          disimpan di Cloudflare D1 &amp; R2 privat dengan autentikasi sesi admin server dan
+          sinkronisasi real-time.
         </p>
       </div>
 
@@ -547,8 +593,9 @@ export function AdminOrderManagement({
                     {formatDateTimeId(paymentConfig.qrisUpdatedAt)}
                   </p>
                   <button
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-800/25 bg-red-50 px-3.5 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100"
-                    onClick={handleClearQris}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-800/25 bg-red-50 px-3.5 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 disabled:opacity-60"
+                    disabled={isQrisBusy}
+                    onClick={() => void handleClearQris()}
                     type="button"
                   >
                     <TrashIcon className="h-3.5 w-3.5" />
@@ -631,10 +678,11 @@ export function AdminOrderManagement({
               <div className="flex justify-end">
                 <button
                   className={buttonClass("solid")}
-                  onClick={handleSavePaymentSettings}
+                  disabled={isQrisBusy}
+                  onClick={() => void handleSavePaymentSettings()}
                   type="button"
                 >
-                  Simpan Pengaturan Pembayaran
+                  {isQrisBusy ? "Menyimpan..." : "Simpan Pengaturan Pembayaran"}
                 </button>
               </div>
             </div>
@@ -1001,10 +1049,15 @@ export function AdminOrderManagement({
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <button
-                    className="rounded-full border border-cocoa/25 bg-ivory px-4 py-2 text-xs font-medium text-espresso hover:border-espresso"
+                    className="rounded-full border border-cocoa/25 bg-ivory px-4 py-2 text-xs font-medium text-espresso hover:border-espresso disabled:opacity-60"
+                    disabled={isActionBusy}
                     onClick={() =>
-                      applyOrderTransition(
-                        adminUpdateEstimatedCompletion(selectedOrder, quoteEstimateInput),
+                      void executeAdminAction(
+                        selectedOrder.id,
+                        {
+                          action: "update_estimated_completion",
+                          estimatedCompletionDate: quoteEstimateInput,
+                        },
                         "Estimasi tanggal penyelesaian telah diperbarui."
                       )
                     }
@@ -1015,12 +1068,15 @@ export function AdminOrderManagement({
                   <button
                     className={buttonClass("solid")}
                     disabled={
+                      isActionBusy ||
                       isPaymentVerified(selectedOrder, "dp") ||
                       selectedOrder.status === "dibatalkan"
                     }
                     onClick={() =>
-                      applyOrderTransition(
-                        adminSendQuote(selectedOrder, {
+                      void executeAdminAction(
+                        selectedOrder.id,
+                        {
+                          action: "send_quote",
                           tailoringFee: parseRupiahInput(tailoringFeeInput),
                           shippingFee:
                             selectedOrder.delivery.method === "pickup"
@@ -1030,7 +1086,7 @@ export function AdminOrderManagement({
                                 : null,
                           estimatedCompletionDate: quoteEstimateInput,
                           quoteNote: quoteNoteInput,
-                        }),
+                        },
                         "Penawaran harga akhir telah dikirim kepada pelanggan."
                       )
                     }
@@ -1075,12 +1131,15 @@ export function AdminOrderManagement({
 
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        className="rounded-full border border-cocoa/25 bg-cream/60 px-3.5 py-1.5 text-xs font-medium text-espresso hover:border-espresso"
+                        className="rounded-full border border-cocoa/25 bg-cream/60 px-3.5 py-1.5 text-xs font-medium text-espresso hover:border-espresso disabled:opacity-60"
+                        disabled={isActionBusy}
                         onClick={() =>
-                          applyOrderTransition(
-                            adminExtendDpDeadline(selectedOrder, {
+                          void executeAdminAction(
+                            selectedOrder.id,
+                            {
+                              action: "extend_dp_deadline",
                               extraHours: paymentConfig.dpWindowHours,
-                            }),
+                            },
                             `Batas waktu pembayaran DP diperpanjang ${paymentConfig.dpWindowHours} jam.`
                           )
                         }
@@ -1091,10 +1150,12 @@ export function AdminOrderManagement({
 
                       {getDpDeadlineState(selectedOrder).requiresAdminReview ? (
                         <button
-                          className="rounded-full border border-rose/50 bg-blush/35 px-3.5 py-1.5 text-xs font-medium text-espresso hover:bg-blush/60"
+                          className="rounded-full border border-rose/50 bg-blush/35 px-3.5 py-1.5 text-xs font-medium text-espresso hover:bg-blush/60 disabled:opacity-60"
+                          disabled={isActionBusy}
                           onClick={() =>
-                            applyOrderTransition(
-                              evaluateDpOverdueForReview(selectedOrder),
+                            void executeAdminAction(
+                              selectedOrder.id,
+                              { action: "evaluate_overdue" },
                               "Pesanan ditandai untuk tinjauan admin karena melewati batas 24 jam tanpa bukti."
                             )
                           }
@@ -1218,14 +1279,16 @@ export function AdminOrderManagement({
                 <div className="flex justify-end">
                   <button
                     className={buttonClass("solid")}
-                    disabled={selectedOrder.status === "dibatalkan"}
+                    disabled={isActionBusy || selectedOrder.status === "dibatalkan"}
                     onClick={() =>
-                      applyOrderTransition(
-                        adminUpdateProductionStage(selectedOrder, {
+                      void executeAdminAction(
+                        selectedOrder.id,
+                        {
+                          action: "update_production_stage",
                           stage: selectedStage,
                           estimatedCompletionDate: estimateUpdateInput || undefined,
                           note: stageNoteInput,
-                        }),
+                        },
                         `Tahap produksi diperbarui ke "${getProductionStageMeta(selectedStage).label}".`
                       )
                     }
@@ -1301,18 +1364,21 @@ export function AdminOrderManagement({
                     <button
                       className={buttonClass("outline")}
                       disabled={
+                        isActionBusy ||
                         isPaymentVerified(selectedOrder, "pelunasan") ||
                         selectedOrder.status === "dibatalkan"
                       }
                       onClick={() =>
-                        applyOrderTransition(
-                          adminIssueSettlementInvoice(selectedOrder, {
+                        void executeAdminAction(
+                          selectedOrder.id,
+                          {
+                            action: "issue_settlement_invoice",
                             shippingFee:
                               selectedOrder.delivery.method === "pickup"
                                 ? 0
                                 : parseRupiahInput(settlementShippingInput),
                             note: settlementNoteInput,
-                          }),
+                          },
                           "Invoice Pelunasan telah diterbitkan dan tersedia di halaman Lacak Pesanan."
                         )
                       }
@@ -1397,15 +1463,17 @@ export function AdminOrderManagement({
                 <div className="flex flex-wrap gap-2.5">
                   <button
                     className={buttonClass("outline")}
-                    disabled={!canAdvanceToFulfillment(selectedOrder)}
+                    disabled={isActionBusy || !canAdvanceToFulfillment(selectedOrder)}
                     onClick={() =>
-                      applyOrderTransition(
-                        adminUpdateFulfillment(selectedOrder, {
+                      void executeAdminAction(
+                        selectedOrder.id,
+                        {
+                          action: "update_fulfillment",
                           courierName: courierNameInput,
                           trackingNumber: trackingNumberInput,
                           pickupReadyNote: pickupNoteInput,
-                          action: "mark_dispatched_or_ready",
-                        }),
+                          fulfillmentAction: "mark_dispatched_or_ready",
+                        },
                         selectedOrder.delivery.method === "shipping"
                           ? "Pesanan ditandai Dalam Pengiriman beserta data resi."
                           : "Pesanan ditandai Siap Diambil di Celmira Boutique."
@@ -1421,17 +1489,20 @@ export function AdminOrderManagement({
                   <button
                     className={buttonClass("solid")}
                     disabled={
+                      isActionBusy ||
                       !canAdvanceToFulfillment(selectedOrder) ||
                       selectedOrder.status === "selesai"
                     }
                     onClick={() =>
-                      applyOrderTransition(
-                        adminUpdateFulfillment(selectedOrder, {
+                      void executeAdminAction(
+                        selectedOrder.id,
+                        {
+                          action: "update_fulfillment",
                           courierName: courierNameInput,
                           trackingNumber: trackingNumberInput,
                           pickupReadyNote: pickupNoteInput,
-                          action: "mark_completed",
-                        }),
+                          fulfillmentAction: "mark_completed",
+                        },
                         "Pesanan ditandai Selesai."
                       )
                     }
@@ -1462,16 +1533,19 @@ export function AdminOrderManagement({
                       value={cancelReasonInput}
                     />
                     <button
-                      className="rounded-full border border-red-800/30 bg-red-100/80 px-4 py-2 text-xs font-medium text-red-950 transition-colors hover:bg-red-200/80"
+                      className="rounded-full border border-red-800/30 bg-red-100/80 px-4 py-2 text-xs font-medium text-red-950 transition-colors hover:bg-red-200/80 disabled:opacity-60"
+                      disabled={isActionBusy}
                       onClick={() =>
-                        applyOrderTransition(
-                          adminCancelOrder(selectedOrder, {
+                        void executeAdminAction(
+                          selectedOrder.id,
+                          {
+                            action: "cancel_order",
                             reason: cancelReasonInput,
                             isTimeoutCancellation:
                               selectedOrder.status === "perlu_tinjauan_admin" ||
                               getDpDeadlineState(selectedOrder).requiresAdminReview ||
                               getDpDeadlineState(selectedOrder).protectedByProofUpload,
-                          }),
+                          },
                           "Pesanan telah dibatalkan dan alasan pembatalan tercatat pada riwayat."
                         )
                       }

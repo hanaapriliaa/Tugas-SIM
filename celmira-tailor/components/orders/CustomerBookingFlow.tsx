@@ -24,9 +24,9 @@ import {
   validateStep4,
   validateStep5,
 } from "@/lib/booking-validation";
+import { OrdersApiError, submitOrderApi } from "@/lib/orders-client";
 import {
   clearBookingDraft,
-  createSubmittedOrderFromDraft,
   loadBookingDraft,
   loadMeasurementProfiles,
   loadSavedDesigns,
@@ -60,6 +60,8 @@ export function CustomerBookingFlow() {
   const [savedDesigns, setSavedDesigns] = useState<DesignStudioSavedConfig[]>([]);
   const [measurementProfiles, setMeasurementProfiles] = useState<MeasurementProfile[]>([]);
   const [submittedOrder, setSubmittedOrder] = useState<SubmittedOrder | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     const storedDraft = loadBookingDraft();
@@ -197,7 +199,7 @@ export function CustomerBookingFlow() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const result = validateStep5(draft);
     if (!result.valid) {
       setErrors(result.errors);
@@ -205,12 +207,32 @@ export function CustomerBookingFlow() {
       return;
     }
 
-    const created = createSubmittedOrderFromDraft(draft);
-    saveSubmittedOrder(created);
-    clearBookingDraft();
-    setErrors({});
-    setSubmittedOrder(created);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const matchedStudio =
+        draft.designSource === "design-studio"
+          ? savedDesigns.find((item) => item.id === draft.selectedStudioDesignId)
+          : undefined;
+      const { order: created } = await submitOrderApi(draft, matchedStudio?.title);
+      saveSubmittedOrder(created);
+      clearBookingDraft();
+      setErrors({});
+      setSubmittedOrder(created);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      if (err instanceof OrdersApiError && err.errors) {
+        setErrors(err.errors);
+      }
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengirim pesanan ke server. Silakan coba lagi."
+      );
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleResetNewOrder() {
@@ -488,10 +510,21 @@ export function CustomerBookingFlow() {
               />
             ) : null}
 
+            {submitError ? (
+              <div className="mt-6 rounded-2xl border border-red-800/20 bg-red-50 px-4 py-3 text-xs font-medium text-red-900">
+                {submitError}
+              </div>
+            ) : null}
+
             {/* Navigasi Bawah */}
             <div className="mt-10 flex flex-col-reverse gap-3 border-t border-cocoa/12 pt-6 sm:flex-row sm:items-center sm:justify-between">
               {currentStep > 1 ? (
-                <button className={buttonClass("outline")} onClick={handleBack} type="button">
+                <button
+                  className={buttonClass("outline")}
+                  disabled={isSubmitting}
+                  onClick={handleBack}
+                  type="button"
+                >
                   <ArrowLeft className="h-4 w-4" />
                   Kembali
                 </button>
@@ -505,8 +538,13 @@ export function CustomerBookingFlow() {
                   <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
                 </button>
               ) : (
-                <button className={buttonClass("solid")} onClick={handleSubmit} type="button">
-                  Ajukan Pesanan Custom
+                <button
+                  className={buttonClass("solid")}
+                  disabled={isSubmitting}
+                  onClick={() => void handleSubmit()}
+                  type="button"
+                >
+                  {isSubmitting ? "Mengirim Pesanan..." : "Ajukan Pesanan Custom"}
                   <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1" />
                 </button>
               )}
