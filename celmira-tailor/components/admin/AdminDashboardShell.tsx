@@ -22,6 +22,7 @@ function AdminDashboardContent({
   const [activeTab, setActiveTab] = useState<AdminTab>("orders");
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [focusedChatOrderCode, setFocusedChatOrderCode] = useState<string | null>(null);
+  const [focusedChatThreadId, setFocusedChatThreadId] = useState<string | null>(null);
   const [focusedManageOrderCode, setFocusedManageOrderCode] = useState<string | null>(null);
 
   const syncUnread = useCallback(async () => {
@@ -49,8 +50,9 @@ function AdminDashboardContent({
     }
   }, [searchParams, syncUnread]);
 
-  function handleOpenOrderChat(orderCode: string) {
+  function handleOpenOrderChat(orderCode: string, threadId?: string) {
     setFocusedChatOrderCode(orderCode);
+    setFocusedChatThreadId(threadId ?? null);
     setActiveTab("chat");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -129,6 +131,7 @@ function AdminDashboardContent({
       <div className={`shell py-10 sm:py-14 ${activeTab === "chat" ? "block" : "hidden"}`}>
         <AdminChatInbox
           focusedOrderCode={focusedChatOrderCode}
+          focusedThreadId={focusedChatThreadId}
           onOpenOrderDetail={handleOpenOrderDetail}
           onUnreadCountChange={setUnreadChatCount}
         />

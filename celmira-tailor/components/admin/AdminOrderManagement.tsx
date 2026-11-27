@@ -43,10 +43,12 @@ import {
 } from "@/lib/order-tracking";
 import {
   deleteAdminQrisApi,
+  fetchAdminOrderContextApi,
   fetchAdminOrdersApi,
   runAdminOrderActionApi,
   updateAdminPaymentConfigApi,
   uploadAdminQrisApi,
+  type AdminOrderIntegratedContext,
 } from "@/lib/orders-client";
 import type {
   AdminPaymentConfig,
@@ -92,7 +94,7 @@ function parseRupiahInput(raw: string): number {
 
 type AdminOrderManagementProps = {
   focusedOrderCode?: string | null;
-  onOpenOrderChat?: (orderCode: string) => void;
+  onOpenOrderChat?: (orderCode: string, threadId?: string) => void;
 };
 
 export function AdminOrderManagement({
@@ -106,6 +108,7 @@ export function AdminOrderManagement({
   const [hydrated, setHydrated] = useState(false);
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [orderContext, setOrderContext] = useState<AdminOrderIntegratedContext | null>(null);
   const [filter, setFilter] = useState<OrderFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showQrisPanel, setShowQrisPanel] = useState(false);
@@ -194,6 +197,27 @@ export function AdminOrderManagement({
     () => orders.find((item) => item.id === selectedOrderId) ?? null,
     [orders, selectedOrderId]
   );
+
+  // Muat konteks pelanggan & percakapan chat terkait dari D1 saat pesanan dipilih
+  useEffect(() => {
+    if (!selectedOrder?.id) {
+      setOrderContext(null);
+      return;
+    }
+    let active = true;
+    void fetchAdminOrderContextApi(selectedOrder.id)
+      .then((res) => {
+        if (!active) return;
+        setOrderContext(res.context);
+      })
+      .catch(() => {
+        if (!active) return;
+        setOrderContext(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedOrder?.id, selectedOrder?.updatedAt]);
 
   // Sinkronkan nilai form setiap kali admin memilih pesanan berbeda
   useEffect(() => {
@@ -898,7 +922,12 @@ export function AdminOrderManagement({
                     {onOpenOrderChat ? (
                       <button
                         className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
-                        onClick={() => onOpenOrderChat(selectedOrder.orderCode)}
+                        onClick={() =>
+                          onOpenOrderChat(
+                            selectedOrder.orderCode,
+                            orderContext?.linkedThreads[0]?.id
+                          )
+                        }
                         type="button"
                       >
                         <ChatIcon className="h-3.5 w-3.5" />
@@ -1182,6 +1211,127 @@ export function AdminOrderManagement({
                     ) : null}
                   </div>
                 </div>
+
+                {/* Konteks Pelanggan Terintegrasi & Percakapan Chat Terkait */}
+                {orderContext && orderContext.orderId === selectedOrder.id ? (
+                  <div
+                    className="mt-5 grid gap-4 border-t border-cocoa/12 pt-5 lg:grid-cols-2"
+                    data-testid="admin-integrated-customer-context"
+                  >
+                    <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4 text-xs">
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                        Riwayat Sesi Pelanggan
+                      </p>
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <span className="rounded-full border border-cocoa/15 bg-cream/65 px-3 py-1 font-medium text-espresso">
+                          {orderContext.customerSummary.totalOrders} pesanan
+                        </span>
+                        <span className="rounded-full border border-cocoa/15 bg-cream/65 px-3 py-1 font-medium text-espresso">
+                          {orderContext.customerSummary.totalDesigns} desain tersimpan
+                        </span>
+                        <span className="rounded-full border border-cocoa/15 bg-cream/65 px-3 py-1 font-medium text-espresso">
+                          {orderContext.customerSummary.totalMeasurementProfiles} profil ukuran
+                        </span>
+                      </div>
+
+                      {orderContext.relatedOrders.length > 0 ? (
+                        <div className="mt-3 space-y-1.5 border-t border-cocoa/10 pt-2.5">
+                          <p className="text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-muted">
+                            Pesanan Lain dari Pelanggan Ini
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {orderContext.relatedOrders.map((rel) => (
+                              <button
+                                className="cursor-pointer rounded-full border border-cocoa/20 bg-cream/40 px-2.5 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso hover:bg-cream"
+                                key={rel.id}
+                                onClick={() => setSelectedOrderId(rel.id)}
+                                type="button"
+                              >
+                                <span className="font-mono">{rel.orderCode}</span> · {rel.designTitle}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-2.5 text-muted">
+                          Ini adalah pesanan pertama yang tercatat pada sesi pelanggan ini.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                          Percakapan Pelanggan Terkait ({orderContext.linkedThreads.length})
+                        </p>
+                        {onOpenOrderChat && orderContext.linkedThreads[0] ? (
+                          <button
+                            className="cursor-pointer text-[0.6875rem] font-medium text-espresso underline underline-offset-2 hover:text-cocoa"
+                            onClick={() =>
+                              onOpenOrderChat(
+                                selectedOrder.orderCode,
+                                orderContext.linkedThreads[0].id
+                              )
+                            }
+                            type="button"
+                          >
+                            Buka di Inbox Chat
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {orderContext.linkedThreads.length === 0 ? (
+                        <p className="mt-2.5 text-muted">
+                          Belum ada percakapan chat dari pelanggan ini.
+                        </p>
+                      ) : (
+                        <div className="mt-2.5 space-y-2">
+                          {orderContext.linkedThreads.slice(0, 3).map((thread) => (
+                            <div
+                              className="rounded-xl border border-cocoa/12 bg-cream/40 p-2.5"
+                              key={thread.id}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="truncate font-medium text-espresso">{thread.title}</p>
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  {thread.unreadByAdmin > 0 ? (
+                                    <span className="rounded-full bg-espresso px-2 py-0.5 text-[0.625rem] font-semibold text-ivory">
+                                      {thread.unreadByAdmin} baru
+                                    </span>
+                                  ) : null}
+                                  {onOpenOrderChat ? (
+                                    <button
+                                      className="cursor-pointer rounded-full border border-cocoa/25 bg-ivory px-2.5 py-0.5 text-[0.625rem] font-medium text-espresso hover:border-espresso"
+                                      onClick={() =>
+                                        onOpenOrderChat(selectedOrder.orderCode, thread.id)
+                                      }
+                                      type="button"
+                                    >
+                                      Balas
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                              {thread.recentMessages.length > 0 ? (
+                                <p className="mt-1 line-clamp-2 text-[0.6875rem] text-muted">
+                                  <span className="font-medium text-espresso">
+                                    {thread.recentMessages[thread.recentMessages.length - 1].senderName}:
+                                  </span>{" "}
+                                  {thread.recentMessages[thread.recentMessages.length - 1].body ||
+                                    `${thread.recentMessages[thread.recentMessages.length - 1].attachmentCount} lampiran gambar`}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-[0.6875rem] text-muted">
+                                  {thread.lastMessagePreview || "Belum ada pesan."}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
               {/* 2. Penawaran Harga Akhir */}

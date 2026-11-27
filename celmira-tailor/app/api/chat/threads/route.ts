@@ -5,6 +5,7 @@ import {
   getOrInitAdminChatConfig,
   listCustomerThreads,
 } from "@/lib/server/chat-repo";
+import { getOrderByCode, hasTrackingSessionAccess } from "@/lib/server/order-repo";
 import type { ChatThreadContext } from "@/lib/types/tailor";
 
 export async function GET(request: Request) {
@@ -51,11 +52,31 @@ export async function POST(request: Request) {
     return Response.json({ error: "Payload JSON tidak valid." }, { status: 400 });
   }
 
+  let resolvedCustomerName = body.customerName?.trim() || session.customerName || undefined;
+  let resolvedContext = body.context ? { ...body.context } : undefined;
+
+  if (resolvedContext?.orderCode) {
+    const cleanCode = resolvedContext.orderCode.trim().toUpperCase();
+    const [foundOrder, hasTrackAccess] = await Promise.all([
+      getOrderByCode(env.DB, cleanCode).catch(() => null),
+      hasTrackingSessionAccess(request, env.DB, cleanCode).catch(() => false),
+    ]);
+    if (foundOrder && (foundOrder.customerSessionId === session.id || hasTrackAccess)) {
+      resolvedContext = {
+        ...resolvedContext,
+        orderCode: foundOrder.order.orderCode,
+        orderVerified: true,
+        categoryId: resolvedContext.categoryId ?? foundOrder.order.categoryId,
+      };
+      resolvedCustomerName = resolvedCustomerName || foundOrder.order.customer.fullName;
+    }
+  }
+
   const { thread, created } = await createCustomerThread(env.DB, session.id, {
     title: body.title,
-    customerName: body.customerName,
+    customerName: resolvedCustomerName,
     legacyLocalId: body.legacyLocalId,
-    context: body.context,
+    context: resolvedContext,
   });
 
   if (created) {

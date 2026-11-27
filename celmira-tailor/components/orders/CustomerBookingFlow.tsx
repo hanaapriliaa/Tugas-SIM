@@ -24,7 +24,7 @@ import {
   validateStep4,
   validateStep5,
 } from "@/lib/booking-validation";
-import { OrdersApiError, submitOrderApi } from "@/lib/orders-client";
+import { OrdersApiError, fetchCustomerOrdersApi, submitOrderApi } from "@/lib/orders-client";
 import { fetchMeasurementProfilesApi, fetchSavedDesignsApi } from "@/lib/studio-client";
 import {
   clearBookingDraft,
@@ -69,15 +69,18 @@ export function CustomerBookingFlow() {
       const storedDraft = loadBookingDraft();
       let designs: DesignStudioSavedConfig[] = [];
       let profiles: MeasurementProfile[] = [];
+      let sessionContact: { fullName: string; whatsapp: string; email: string } | null = null;
 
       try {
-        const [designsRes, profilesRes] = await Promise.all([
+        const [designsRes, profilesRes, ordersRes] = await Promise.all([
           fetchSavedDesignsApi(),
           fetchMeasurementProfilesApi(),
+          fetchCustomerOrdersApi().catch(() => ({ orders: [], customerContact: null })),
         ]);
         if (!active) return;
         designs = designsRes.designs;
         profiles = profilesRes.profiles;
+        sessionContact = ordersRes.customerContact;
       } catch {
         // Bila gagal memuat sementara, pengguna tetap dapat memilih desain Celmira / ukuran manual
       }
@@ -163,6 +166,17 @@ export function CustomerBookingFlow() {
             },
           };
         }
+      }
+
+      if (sessionContact) {
+        nextDraft = {
+          ...nextDraft,
+          customer: {
+            fullName: nextDraft.customer.fullName || sessionContact.fullName,
+            whatsapp: nextDraft.customer.whatsapp || sessionContact.whatsapp,
+            email: nextDraft.customer.email || sessionContact.email,
+          },
+        };
       }
 
       setSavedDesigns(designs);

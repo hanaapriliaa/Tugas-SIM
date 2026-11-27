@@ -1,15 +1,58 @@
 import { validateStep5 } from "@/lib/booking-validation";
-import { getOrCreateCustomerSession } from "@/lib/server/auth";
+import {
+  getCustomerSession,
+  getOrCreateCustomerSession,
+  updateCustomerSessionIdentity,
+} from "@/lib/server/auth";
 import { broadcastChatEvent, getChatEnv } from "@/lib/server/cf-env";
 import {
   createOrderInDb,
   grantTrackingAccessCookie,
+  listOrdersByCustomerSessionInDb,
   saveOrderInDb,
 } from "@/lib/server/order-repo";
 import { deleteOrderFile, storeOrderFile } from "@/lib/server/order-storage";
-import { getDesignByIdInDb } from "@/lib/server/studio-repo";
+import {
+  getDesignByIdInDb,
+  getMeasurementProfileByIdInDb,
+} from "@/lib/server/studio-repo";
 import { extractStudioFileIdFromUrl, getStudioFileById } from "@/lib/server/studio-storage";
 import type { OrderDraft, ReferenceAttachment } from "@/lib/types/tailor";
+
+export async function GET(request: Request) {
+  const env = getChatEnv();
+  const session = await getCustomerSession(request, env.DB);
+  if (!session) {
+    return Response.json(
+      {
+        orders: [],
+        customerContact: null,
+        serverTime: new Date().toISOString(),
+      },
+      { status: 200, headers: { "cache-control": "no-store" } }
+    );
+  }
+
+  const orders = await listOrdersByCustomerSessionInDb(env.DB, session.id);
+  const latestOrder = orders[0];
+  const customerContact =
+    session.customerName || session.customerWhatsappNorm || latestOrder
+      ? {
+          fullName: session.customerName ?? latestOrder?.customer.fullName ?? "",
+          whatsapp: session.customerWhatsappNorm ?? latestOrder?.customer.whatsapp ?? "",
+          email: session.customerEmail ?? latestOrder?.customer.email ?? "",
+        }
+      : null;
+
+  return Response.json(
+    {
+      orders,
+      customerContact,
+      serverTime: new Date().toISOString(),
+    },
+    { status: 200, headers: { "cache-control": "no-store" } }
+  );
+}
 
 function decodeDataUrlToBytes(dataUrl: string): Uint8Array | null {
   const commaIdx = dataUrl.indexOf(",");
@@ -92,23 +135,71 @@ export async function POST(request: Request) {
     );
   }
 
-  // Resolusi data Design Studio dari D1 bila pesanan terhubung ke Design Studio
+  // Resolusi & validasi kepemilikan data Design Studio serta Measurement Profile dari D1
+  let resolvedDraft: OrderDraft = draft;
   let resolvedStudioTitle = studioDesignTitle;
   let resolvedStudioModelName: string | undefined;
   let linkedStudioAttachments: ReferenceAttachment[] = [];
 
   if (draft.designSource === "design-studio" && draft.selectedStudioDesignId) {
     const foundDesign = await getDesignByIdInDb(env.DB, draft.selectedStudioDesignId);
-    if (foundDesign && foundDesign.customerSessionId === session.id) {
+    if (foundDesign) {
+      if (foundDesign.customerSessionId !== session.id) {
+        return Response.json(
+          { error: "Desain yang dipilih tidak dimiliki oleh sesi pelanggan Anda." },
+          { status: 403 }
+        );
+      }
       resolvedStudioTitle = resolvedStudioTitle || foundDesign.design.title;
       resolvedStudioModelName = foundDesign.design.modelName;
       linkedStudioAttachments = foundDesign.design.attachments;
+      resolvedDraft = {
+        ...resolvedDraft,
+        specifications: {
+          ...foundDesign.design.specifications,
+          ...resolvedDraft.specifications,
+        },
+      };
+    }
+  }
+
+  if (draft.measurements.mode === "profile" && draft.measurements.profileId) {
+    const foundProfile = await getMeasurementProfileByIdInDb(env.DB, draft.measurements.profileId);
+    if (foundProfile) {
+      if (foundProfile.customerSessionId !== session.id) {
+        return Response.json(
+          { error: "Profil ukuran yang dipilih tidak dimiliki oleh sesi pelanggan Anda." },
+          { status: 403 }
+        );
+      }
+      resolvedDraft = {
+        ...resolvedDraft,
+        measurements: {
+          ...resolvedDraft.measurements,
+          profileId: foundProfile.profile.id,
+          profileName: resolvedDraft.measurements.profileName?.trim() || foundProfile.profile.label,
+          templateId: resolvedDraft.measurements.templateId || foundProfile.profile.templateId,
+          values: {
+            ...foundProfile.profile.values,
+            ...resolvedDraft.measurements.values,
+          },
+          extraValues:
+            resolvedDraft.measurements.extraValues ?? foundProfile.profile.extraValues
+              ? {
+                  ...(foundProfile.profile.extraValues ?? {}),
+                  ...(resolvedDraft.measurements.extraValues ?? {}),
+                }
+              : undefined,
+          fitPreferenceNote:
+            resolvedDraft.measurements.fitPreferenceNote || foundProfile.profile.notes || "",
+        },
+      };
     }
   }
 
   // Buat record order terlebih dahulu untuk mendapatkan order.id
   let order = await createOrderInDb(env.DB, {
-    draft,
+    draft: resolvedDraft,
     customerSessionId: session.id,
     studioDesignTitle: resolvedStudioTitle,
     studioDesignModelName: resolvedStudioModelName,
@@ -246,6 +337,13 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : "Gagal menyimpan lampiran pesanan.";
     return Response.json({ error: message }, { status: 500 });
   }
+
+  // Hubungkan identitas kontak pelanggan ke guest session & thread chat tanpa nama
+  await updateCustomerSessionIdentity(env.DB, session.id, {
+    fullName: order.customer.fullName,
+    whatsapp: order.customer.whatsapp,
+    email: order.customer.email,
+  });
 
   const trackingCookie = await grantTrackingAccessCookie(request, env.DB, order.orderCode);
 

@@ -14,7 +14,7 @@ type ChatContextBannerProps = {
   onVerifyOrder: (
     orderCode: string,
     verifier: string
-  ) => { ok: boolean; error?: string };
+  ) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
   onSelectQuickPrompt: (prompt: string) => void;
 };
 
@@ -42,11 +42,11 @@ export function ChatContextBanner({
 
   const quickPrompts = getChatQuickPrompts(context);
 
-  function handleSubmitVerify(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmitVerify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!context.orderCode) return;
     setVerifyError(null);
-    const result = onVerifyOrder(context.orderCode, verifierInput);
+    const result = await onVerifyOrder(context.orderCode, verifierInput);
     if (!result.ok) {
       setVerifyError(result.error ?? "Verifikasi gagal.");
       return;

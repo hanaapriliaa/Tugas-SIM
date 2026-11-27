@@ -31,7 +31,7 @@ import {
 } from "@/lib/chat-client";
 import { startChatRealtime } from "@/lib/chat-realtime";
 import { ORDER_STATUS_META, formatDateOnlyId } from "@/lib/order-tracking";
-import { loadSubmittedOrders } from "@/lib/storage/tailor-store";
+import { fetchAdminOrdersApi } from "@/lib/orders-client";
 import type {
   AdminChatConfig,
   ChatConnectionStatus,
@@ -56,12 +56,14 @@ const CONNECTION_LABELS: Record<ChatConnectionStatus, string> = {
 
 type AdminChatInboxProps = {
   focusedOrderCode?: string | null;
+  focusedThreadId?: string | null;
   onOpenOrderDetail?: (orderCode: string) => void;
   onUnreadCountChange?: (count: number) => void;
 };
 
 export function AdminChatInbox({
   focusedOrderCode,
+  focusedThreadId,
   onOpenOrderDetail,
   onUnreadCountChange,
 }: AdminChatInboxProps) {
@@ -100,10 +102,15 @@ export function AdminChatInbox({
 
   const syncFromServer = useCallback(async () => {
     try {
-      const data = await fetchAdminThreads();
+      const [data, ordersRes] = await Promise.all([
+        fetchAdminThreads(),
+        fetchAdminOrdersApi().catch(() => null),
+      ]);
       setThreads(data.threads);
       setChatConfig(data.config);
-      setOrders(loadSubmittedOrders());
+      if (ordersRes) {
+        setOrders(ordersRes.orders);
+      }
       onUnreadCountChange?.(data.totalUnreadForAdmin);
 
       const openId = selectedThreadIdRef.current;
@@ -165,13 +172,20 @@ export function AdminChatInbox({
   }, [hydrated, syncFromServer]);
 
   useEffect(() => {
+    if (focusedThreadId) {
+      const exactThread = threads.find((item) => item.id === focusedThreadId);
+      if (exactThread) {
+        void handleSelectThread(exactThread.id);
+        return;
+      }
+    }
     if (!focusedOrderCode) return;
     const match = threads.find((item) => item.context.orderCode === focusedOrderCode);
     if (match) {
       void handleSelectThread(match.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedOrderCode]);
+  }, [focusedThreadId, focusedOrderCode, threads.length]);
 
   const filteredThreads = useMemo(
     () => filterAdminChatThreads(threads, { query: searchQuery, filter, orders }),

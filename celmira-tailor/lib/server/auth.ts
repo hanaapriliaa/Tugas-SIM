@@ -12,6 +12,7 @@ export type CustomerSessionRecord = {
   id: string;
   customerName: string | null;
   customerWhatsappNorm: string | null;
+  customerEmail: string | null;
   createdAt: string;
   lastSeenAt: string;
 };
@@ -173,27 +174,29 @@ export async function getCustomerSession(
   if (!rawToken || rawToken.length < 32) return null;
 
   const tokenHash = await sha256Hex(rawToken);
+  type SessionRow = {
+    id: string;
+    customer_name: string | null;
+    customer_whatsapp_norm: string | null;
+    customer_email?: string | null;
+    created_at: string;
+    last_seen_at: string;
+  };
   let row = await db
     .prepare(
-      `SELECT id, customer_name, customer_whatsapp_norm, created_at, last_seen_at
+      `SELECT id, customer_name, customer_whatsapp_norm, customer_email, created_at, last_seen_at
        FROM chat_customer_sessions
        WHERE token_hash = ?`
     )
     .bind(tokenHash)
-    .first<{
-      id: string;
-      customer_name: string | null;
-      customer_whatsapp_norm: string | null;
-      created_at: string;
-      last_seen_at: string;
-    }>();
+    .first<SessionRow>();
 
   if (!row) {
     const nowIso = new Date().toISOString();
     const queryDeviceToken = () =>
       db
         .prepare(
-          `SELECT s.id, s.customer_name, s.customer_whatsapp_norm, s.created_at, s.last_seen_at
+          `SELECT s.id, s.customer_name, s.customer_whatsapp_norm, s.customer_email, s.created_at, s.last_seen_at
            FROM customer_session_tokens t
            INNER JOIN chat_customer_sessions s ON s.id = t.customer_session_id
            WHERE t.token_hash = ?
@@ -201,13 +204,7 @@ export async function getCustomerSession(
              AND (t.expires_at IS NULL OR t.expires_at > ?)`
         )
         .bind(tokenHash, nowIso)
-        .first<{
-          id: string;
-          customer_name: string | null;
-          customer_whatsapp_norm: string | null;
-          created_at: string;
-          last_seen_at: string;
-        }>();
+        .first<SessionRow>();
     try {
       row = await queryDeviceToken();
     } catch {
@@ -252,9 +249,62 @@ export async function getCustomerSession(
     id: row.id,
     customerName: row.customer_name,
     customerWhatsappNorm: row.customer_whatsapp_norm,
+    customerEmail: row.customer_email ?? null,
     createdAt: row.created_at,
     lastSeenAt: now,
   };
+}
+
+export function normalizeWhatsappForSession(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("62")) return `0${digits.slice(2)}`;
+  return digits;
+}
+
+export async function updateCustomerSessionIdentity(
+  db: D1Database,
+  sessionId: string,
+  contact: {
+    fullName?: string | null;
+    whatsapp?: string | null;
+    email?: string | null;
+  }
+): Promise<void> {
+  await ensureChatSchema(db);
+  const cleanName = contact.fullName?.trim() || null;
+  const cleanWhatsapp = contact.whatsapp?.trim()
+    ? normalizeWhatsappForSession(contact.whatsapp.trim())
+    : null;
+  const cleanEmail = contact.email?.trim() || null;
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(
+      `UPDATE chat_customer_sessions
+       SET customer_name = COALESCE(?, customer_name),
+           customer_whatsapp_norm = COALESCE(?, customer_whatsapp_norm),
+           customer_email = COALESCE(?, customer_email),
+           last_seen_at = ?
+       WHERE id = ?`
+    )
+    .bind(cleanName, cleanWhatsapp, cleanEmail, now, sessionId)
+    .run();
+
+  if (cleanName) {
+    try {
+      await db
+        .prepare(
+          `UPDATE chat_threads
+           SET customer_name = ?
+           WHERE customer_session_id = ?
+             AND (customer_name IS NULL OR TRIM(customer_name) = '' OR customer_name = 'Pelanggan')`
+        )
+        .bind(cleanName, sessionId)
+        .run();
+    } catch {
+      // Abaikan bila tabel chat_threads belum diinisialisasi pada lingkungan test minimal.
+    }
+  }
 }
 
 export async function getOrCreateCustomerSession(
@@ -288,6 +338,7 @@ export async function getOrCreateCustomerSession(
       id,
       customerName: null,
       customerWhatsappNorm: null,
+      customerEmail: null,
       createdAt: now,
       lastSeenAt: now,
     },

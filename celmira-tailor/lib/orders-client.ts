@@ -1,4 +1,5 @@
 import type { AdminOrderActionBody } from "@/app/api/admin/orders/[orderId]/action/route";
+import type { AdminOrderIntegratedContext } from "@/lib/server/order-repo";
 import type {
   AdminPaymentConfig,
   OrderDraft,
@@ -6,6 +7,14 @@ import type {
   PaymentStage,
   SubmittedOrder,
 } from "@/lib/types/tailor";
+
+export type { AdminOrderIntegratedContext };
+
+export type GuestCustomerContact = {
+  fullName: string;
+  whatsapp: string;
+  email: string;
+};
 
 export class OrdersApiError extends Error {
   status: number;
@@ -37,6 +46,23 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   }
 
   return data as T;
+}
+
+export async function fetchCustomerOrdersApi(): Promise<{
+  orders: SubmittedOrder[];
+  customerContact: GuestCustomerContact | null;
+  serverTime: string;
+}> {
+  const res = await fetch("/api/orders", {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  return parseJsonResponse<{
+    orders: SubmittedOrder[];
+    customerContact: GuestCustomerContact | null;
+    serverTime: string;
+  }>(res);
 }
 
 export async function submitOrderApi(
@@ -132,6 +158,21 @@ export async function fetchAdminOrdersApi(): Promise<{
   return parseJsonResponse<{
     orders: SubmittedOrder[];
     paymentConfig: AdminPaymentConfig;
+    serverTime: string;
+  }>(res);
+}
+
+export async function fetchAdminOrderContextApi(orderId: string): Promise<{
+  context: AdminOrderIntegratedContext;
+  serverTime: string;
+}> {
+  const res = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/context`, {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  return parseJsonResponse<{
+    context: AdminOrderIntegratedContext;
     serverTime: string;
   }>(res);
 }

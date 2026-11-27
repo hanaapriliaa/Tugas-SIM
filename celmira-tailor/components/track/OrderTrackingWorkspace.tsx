@@ -28,6 +28,7 @@ import {
   maskOrderContact,
 } from "@/lib/order-tracking";
 import {
+  fetchCustomerOrdersApi,
   fetchTrackedOrderApi,
   respondToQuoteApi,
   uploadPaymentProofApi,
@@ -65,21 +66,41 @@ export function OrderTrackingWorkspace() {
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const loadMergedSessionOrders = useCallback(async () => {
+    const localOrders = loadSubmittedOrders();
+    try {
+      const serverRes = await fetchCustomerOrdersApi();
+      const byCode = new Map<string, SubmittedOrder>();
+      for (const item of serverRes.orders) {
+        byCode.set(item.orderCode.toUpperCase(), item);
+      }
+      for (const item of localOrders) {
+        const key = item.orderCode.toUpperCase();
+        if (!byCode.has(key)) byCode.set(key, item);
+      }
+      const merged = Array.from(byCode.values()).sort((a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt)
+      );
+      setRecentOrders(merged);
+    } catch {
+      setRecentOrders(localOrders);
+    }
+  }, []);
+
   const refreshActiveOrder = useCallback(async (orderCode: string) => {
     try {
       const data = await fetchTrackedOrderApi(orderCode);
       setActiveOrder(data.order);
       setPaymentConfig(data.paymentConfig);
       updateSubmittedOrder(data.order);
-      setRecentOrders(loadSubmittedOrders());
+      await loadMergedSessionOrders();
     } catch {
       // Abaikan error sementara saat polling/reconnect
     }
-  }, []);
+  }, [loadMergedSessionOrders]);
 
   useEffect(() => {
-    setRecentOrders(loadSubmittedOrders());
-    setHydrated(true);
+    void loadMergedSessionOrders().finally(() => setHydrated(true));
 
     const urlCode =
       searchParams.get("code") ??
@@ -96,13 +117,13 @@ export function OrderTrackingWorkspace() {
           setPaymentConfig(data.paymentConfig);
           markOrderVerifiedInSession(data.order.orderCode);
           updateSubmittedOrder(data.order);
-          setRecentOrders(loadSubmittedOrders());
+          void loadMergedSessionOrders();
         })
         .catch(() => {
           // Belum terverifikasi: biarkan form 2FA tampil dengan kode terisi
         });
     }
-  }, [searchParams]);
+  }, [searchParams, loadMergedSessionOrders]);
 
   // Sinkronisasi real-time saat admin mengirim penawaran, memverifikasi DP, atau memperbarui tahap produksi
   useEffect(() => {
@@ -136,7 +157,7 @@ export function OrderTrackingWorkspace() {
       setPaymentConfig(data.paymentConfig);
       markOrderVerifiedInSession(data.order.orderCode);
       updateSubmittedOrder(data.order);
-      setRecentOrders(loadSubmittedOrders());
+      await loadMergedSessionOrders();
     } catch (err) {
       setLookupError(
         err instanceof Error

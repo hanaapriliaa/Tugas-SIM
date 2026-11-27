@@ -4,6 +4,7 @@ export const CHAT_SCHEMA_STATEMENTS: readonly string[] = [
     token_hash TEXT NOT NULL UNIQUE,
     customer_name TEXT,
     customer_whatsapp_norm TEXT,
+    customer_email TEXT,
     created_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL
   )`,
@@ -92,10 +93,21 @@ export const CHAT_SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at)`,
 ];
 
+const CHAT_SCHEMA_ALTER_STATEMENTS: readonly string[] = [
+  `ALTER TABLE chat_customer_sessions ADD COLUMN customer_email TEXT`,
+];
+
 const initializedDbs = new WeakSet<D1Database>();
 
 export async function ensureChatSchema(db: D1Database): Promise<void> {
   if (initializedDbs.has(db)) return;
   await db.batch(CHAT_SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
+  for (const alterSql of CHAT_SCHEMA_ALTER_STATEMENTS) {
+    try {
+      await db.prepare(alterSql).run();
+    } catch {
+      // Kolom sudah ada pada database terbaru.
+    }
+  }
   initializedDbs.add(db);
 }

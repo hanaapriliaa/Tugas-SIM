@@ -29,15 +29,17 @@ import {
   type MigrationSummary,
 } from "@/lib/chat-client";
 import { startChatRealtime } from "@/lib/chat-realtime";
-import { verifyOrderTrackingAccess } from "@/lib/order-tracking";
+import {
+  fetchCustomerOrdersApi,
+  verifyTrackingOrderApi,
+  type GuestCustomerContact,
+} from "@/lib/orders-client";
 import { site } from "@/lib/site";
 import {
   isOrderVerifiedInSession,
-  loadMeasurementProfiles,
-  loadSavedDesigns,
-  loadSubmittedOrders,
   markOrderVerifiedInSession,
 } from "@/lib/storage/tailor-store";
+import { fetchMeasurementProfilesApi, fetchSavedDesignsApi } from "@/lib/studio-client";
 import type {
   AdminChatConfig,
   ChatConnectionStatus,
@@ -68,6 +70,7 @@ export function CustomerChatWorkspace() {
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [orders, setOrders] = useState<SubmittedOrder[]>([]);
+  const [customerContact, setCustomerContact] = useState<GuestCustomerContact | null>(null);
   const [chatConfig, setChatConfig] = useState<AdminChatConfig>(createDefaultAdminChatConfig);
   const [hydrated, setHydrated] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
@@ -132,12 +135,19 @@ export function CustomerChatWorkspace() {
     let active = true;
 
     async function bootstrap() {
-      const initialOrders = loadSubmittedOrders();
-      const designs = loadSavedDesigns();
-      const profiles = loadMeasurementProfiles();
+      const [ordersRes, designsRes, profilesRes] = await Promise.all([
+        fetchCustomerOrdersApi().catch(() => ({ orders: [] as SubmittedOrder[], customerContact: null })),
+        fetchSavedDesignsApi().catch(() => ({ designs: [] })),
+        fetchMeasurementProfilesApi().catch(() => ({ profiles: [] })),
+      ]);
       if (!active) return;
 
+      const initialOrders = ordersRes.orders;
+      const designs = designsRes.designs;
+      const profiles = profilesRes.profiles;
+
       setOrders(initialOrders);
+      setCustomerContact(ordersRes.customerContact);
       setLegacyInfo(getLocalMigrationInfo());
 
       const loadedThreads = (await syncFromServer()) ?? [];
@@ -281,14 +291,30 @@ export function CustomerChatWorkspace() {
     }
   }
 
-  function handleVerifyOrderFromBanner(orderCode: string, verifier: string) {
-    const result = verifyOrderTrackingAccess(orders, orderCode, verifier);
-    if (!result.ok) {
-      return { ok: false, error: result.error };
+  async function handleVerifyOrderFromBanner(orderCode: string, verifier: string) {
+    try {
+      const data = await verifyTrackingOrderApi(orderCode, verifier);
+      markOrderVerifiedInSession(data.order.orderCode);
+      setOrders((prev) => [
+        data.order,
+        ...prev.filter((item) => item.orderCode !== data.order.orderCode),
+      ]);
+      setCustomerContact({
+        fullName: data.order.customer.fullName,
+        whatsapp: data.order.customer.whatsapp,
+        email: data.order.customer.email,
+      });
+      setVerifiedSessionTick((n) => n + 1);
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Kombinasi nomor pesanan dan identitas verifikasi tidak cocok.",
+      };
     }
-    markOrderVerifiedInSession(result.order.orderCode);
-    setVerifiedSessionTick((n) => n + 1);
-    return { ok: true };
   }
 
   function handleAddRawFiles(files: File[]) {
@@ -328,7 +354,7 @@ export function CustomerChatWorkspace() {
         };
         const created = await createCustomerThreadApi({
           context: ctx,
-          customerName: matchedOrder?.customer.fullName,
+          customerName: matchedOrder?.customer.fullName || customerContact?.fullName || undefined,
         });
         threadId = created.thread.id;
         setActiveThreadId(threadId);
@@ -346,7 +372,7 @@ export function CustomerChatWorkspace() {
 
       const sent = await sendCustomerMessageApi(threadId, {
         body: draftText,
-        senderName: matchedOrder?.customer.fullName || "Anda",
+        senderName: matchedOrder?.customer.fullName || customerContact?.fullName || "Anda",
         clientMessageId,
         attachmentIds: uploadedIds,
       });

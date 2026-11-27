@@ -4,6 +4,8 @@ export const ORDER_SCHEMA_STATEMENTS: readonly string[] = [
     order_code TEXT NOT NULL UNIQUE,
     tracking_access_code TEXT NOT NULL,
     customer_session_id TEXT,
+    design_id TEXT,
+    measurement_profile_id TEXT,
     status TEXT NOT NULL,
     production_stage TEXT NOT NULL,
     category_id TEXT NOT NULL,
@@ -54,10 +56,28 @@ export const ORDER_SCHEMA_STATEMENTS: readonly string[] = [
     ON order_tracking_sessions(expires_at)`,
 ];
 
+const ORDER_SCHEMA_ALTER_STATEMENTS: readonly string[] = [
+  `ALTER TABLE orders ADD COLUMN design_id TEXT`,
+  `ALTER TABLE orders ADD COLUMN measurement_profile_id TEXT`,
+];
+
+const ORDER_POST_ALTER_INDEXES: readonly string[] = [
+  `CREATE INDEX IF NOT EXISTS idx_orders_design ON orders(design_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_measurement_profile ON orders(measurement_profile_id)`,
+];
+
 const initializedOrderDbs = new WeakSet<D1Database>();
 
 export async function ensureOrderSchema(db: D1Database): Promise<void> {
   if (initializedOrderDbs.has(db)) return;
   await db.batch(ORDER_SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
+  for (const alterSql of ORDER_SCHEMA_ALTER_STATEMENTS) {
+    try {
+      await db.prepare(alterSql).run();
+    } catch {
+      // Kolom sudah ada pada database terbaru.
+    }
+  }
+  await db.batch(ORDER_POST_ALTER_INDEXES.map((sql) => db.prepare(sql)));
   initializedOrderDbs.add(db);
 }
