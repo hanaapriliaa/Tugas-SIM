@@ -56,7 +56,7 @@ export function Header() {
             </span>
           </Link>
 
-          <nav aria-label="Navigasi utama" className="hidden items-center gap-8 lg:flex">
+          <nav aria-label="Navigasi utama" className="hidden items-center gap-5 lg:flex xl:gap-7">
             {navigation.map((item) => (
               <Link
                 className={`relative py-1 text-[0.8125rem] tracking-[0.04em] transition-colors duration-300 hover:text-espresso ${

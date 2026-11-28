@@ -1,4 +1,5 @@
 import { validateStep5 } from "@/lib/booking-validation";
+import { getOrInitProductionCapacityInDb } from "@/lib/server/admin-repo";
 import {
   getCustomerSession,
   getOrCreateCustomerSession,
@@ -133,6 +134,21 @@ export async function POST(request: Request) {
       { error: firstError, errors: validation.errors },
       { status: 400 }
     );
+  }
+
+  // Periksa tanggal libur / blokir jadwal yang ditetapkan admin di D1
+  try {
+    const capacity = await getOrInitProductionCapacityInDb(env.DB);
+    const blockedMatch = capacity.blockedDates.find((item) => item.date === draft.targetDate);
+    if (blockedMatch) {
+      const msg = `Tanggal target ${draft.targetDate} tidak tersedia (${blockedMatch.reason}). Silakan pilih tanggal lain.`;
+      return Response.json(
+        { error: msg, errors: { targetDate: msg } },
+        { status: 400 }
+      );
+    }
+  } catch {
+    // Abaikan jika tabel kapasitas sementara belum siap
   }
 
   // Resolusi & validasi kepemilikan data Design Studio serta Measurement Profile dari D1

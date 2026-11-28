@@ -174,7 +174,7 @@ export function FloatingChatButton() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3 sm:bottom-7 sm:right-7"
+      className="no-print pointer-events-none fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3 sm:bottom-7 sm:right-7"
       ref={containerRef}
     >
       <div

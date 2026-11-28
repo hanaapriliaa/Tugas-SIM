@@ -23,6 +23,7 @@ type MeasurementStudioFormProps = {
   currentStep: Exclude<MeasurementStudioStep, 3>;
   draft: MeasurementStudioDraft;
   activeTemplate: MeasurementTemplateConfig;
+  templates?: MeasurementTemplateConfig[];
   activeFieldKey: string | null;
   errors: Record<string, string>;
   onSelectGarmentType: (option: MeasurementGarmentTypeOption) => void;
@@ -57,6 +58,7 @@ export function MeasurementStudioForm({
   currentStep,
   draft,
   activeTemplate,
+  templates,
   activeFieldKey,
   errors,
   onSelectGarmentType,
@@ -65,6 +67,13 @@ export function MeasurementStudioForm({
   onFocusField,
 }: MeasurementStudioFormProps) {
   const selectedGarmentType = getMeasurementGarmentTypeById(draft.garmentTypeId);
+  const activeTemplateIds = templates
+    ? new Set(templates.filter((tpl) => tpl.active).map((tpl) => tpl.id))
+    : null;
+  const visibleGarmentTypes =
+    activeTemplateIds && activeTemplateIds.size > 0
+      ? MEASUREMENT_GARMENT_TYPES.filter((opt) => activeTemplateIds.has(opt.templateId))
+      : MEASUREMENT_GARMENT_TYPES;
 
   // =========================================================================
   // 01 — JENIS PAKAIAN (Satu pilihan utama, template otomatis di Tahap 02)
@@ -95,7 +104,7 @@ export function MeasurementStudioForm({
           className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3"
           role="radiogroup"
         >
-          {MEASUREMENT_GARMENT_TYPES.map((option) => {
+          {visibleGarmentTypes.map((option) => {
             const selected = draft.garmentTypeId === option.id;
             return (
               <button

@@ -431,3 +431,136 @@ export type AdminChatConfig = {
   officialWhatsappNumber?: string;
   updatedAt: string;
 };
+
+export type BlockedProductionDate = {
+  date: string;
+  reason: string;
+};
+
+export type AdminProductionCapacityConfig = {
+  weeklyOrderLimit: number;
+  dailyTargetLimit: number;
+  standardLeadDays: number;
+  blockedDates: BlockedProductionDate[];
+  categoryLeadDays: Partial<Record<GarmentCategoryId, number>>;
+  operationalNote: string;
+  updatedAt: string;
+};
+
+export type ProductionLoadStatus = "aman" | "mendekati_penuh" | "melebihi_kapasitas";
+
+export type ProductionQueueItem = {
+  orderId: string;
+  orderCode: string;
+  customerName: string;
+  categoryId: GarmentCategoryId;
+  categoryName: string;
+  designTitle: string;
+  status: OrderStatus;
+  productionStage: ProductionStage;
+  targetDate: string;
+  estimatedCompletionDate?: string;
+  daysUntilTarget: number;
+  isBlockedDateConflict: boolean;
+  isInProduction: boolean;
+};
+
+export type ProductionWeekLoad = {
+  weekStart: string;
+  weekEnd: string;
+  label: string;
+  activeCount: number;
+  inProductionCount: number;
+  limit: number;
+  utilizationPercent: number;
+  status: ProductionLoadStatus;
+  orders: ProductionQueueItem[];
+};
+
+export type ProductionDailyAlert = {
+  date: string;
+  count: number;
+  limit: number;
+  isBlocked: boolean;
+  blockedReason?: string;
+  orderCodes: string[];
+};
+
+export type ProductionScheduleSummary = {
+  capacity: AdminProductionCapacityConfig;
+  metrics: {
+    totalActiveOrders: number;
+    inProductionOrders: number;
+    awaitingQuoteOrDpOrders: number;
+    dueWithin7Days: number;
+    overdueOrders: number;
+    blockedDateConflicts: number;
+  };
+  weeks: ProductionWeekLoad[];
+  dailyAlerts: ProductionDailyAlert[];
+  queue: ProductionQueueItem[];
+  generatedAt: string;
+};
+
+export type AdminCustomerRecord = {
+  customerKey: string;
+  sessionId: string | null;
+  fullName: string;
+  whatsapp: string;
+  email: string;
+  totalOrders: number;
+  activeOrders: number;
+  completedOrders: number;
+  totalQuotedValue: number;
+  totalDesigns: number;
+  totalMeasurementProfiles: number;
+  totalChatThreads: number;
+  unreadChatByAdmin: number;
+  latestOrderCode?: string;
+  latestOrderStatus?: OrderStatus;
+  internalNote: string;
+  createdAt: string;
+  lastActivityAt: string;
+};
+
+export type AdminCustomerDetail = {
+  customer: AdminCustomerRecord;
+  orders: Array<{
+    id: string;
+    orderCode: string;
+    categoryName: string;
+    designTitle: string;
+    status: OrderStatus;
+    productionStage: ProductionStage;
+    targetDate: string;
+    tailoringFee: number | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  designs: Array<{
+    id: string;
+    title: string;
+    categoryId: GarmentCategoryId;
+    modelName: string;
+    fabric: string;
+    colorName: string;
+    updatedAt: string;
+  }>;
+  measurementProfiles: Array<{
+    id: string;
+    label: string;
+    templateId: MeasurementTemplateId;
+    categoryHint?: GarmentCategoryId;
+    summary: Array<{ key: string; label: string; value: string }>;
+    updatedAt: string;
+  }>;
+  chatThreads: Array<{
+    id: string;
+    title: string;
+    source: ChatThreadSource;
+    orderCode?: string;
+    unreadByAdmin: number;
+    lastMessagePreview?: string;
+    updatedAt: string;
+  }>;
+};

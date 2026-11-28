@@ -1,14 +1,30 @@
 "use client";
 
 import { getMinimumTargetDate } from "@/lib/booking-validation";
+import { formatDateOnlyId } from "@/lib/order-tracking";
 import { site } from "@/lib/site";
 import { ArrowUpRight, PinIcon } from "@/components/ui/icons";
-import type { CustomerIdentity, DeliveryDetails, DeliveryMethod } from "@/lib/types/tailor";
+import type {
+  BlockedProductionDate,
+  CustomerIdentity,
+  DeliveryDetails,
+  DeliveryMethod,
+  GarmentCategoryId,
+} from "@/lib/types/tailor";
+
+export type PublicProductionScheduleInfo = {
+  standardLeadDays: number;
+  categoryLeadDays: Partial<Record<GarmentCategoryId, number>>;
+  blockedDates: BlockedProductionDate[];
+  operationalNote: string;
+};
 
 type StepCustomerDeliveryProps = {
+  categoryId?: GarmentCategoryId | "";
   customer: CustomerIdentity;
   delivery: DeliveryDetails;
   targetDate: string;
+  productionSchedule?: PublicProductionScheduleInfo | null;
   errors: Record<string, string>;
   onChangeCustomer: (patch: Partial<CustomerIdentity>) => void;
   onChangeDelivery: (patch: Partial<DeliveryDetails>) => void;
@@ -16,15 +32,25 @@ type StepCustomerDeliveryProps = {
 };
 
 export function StepCustomerDelivery({
+  categoryId,
   customer,
   delivery,
   targetDate,
+  productionSchedule,
   errors,
   onChangeCustomer,
   onChangeDelivery,
   onChangeTargetDate,
 }: StepCustomerDeliveryProps) {
   const minDate = getMinimumTargetDate();
+  const recommendedLeadDays =
+    (categoryId && productionSchedule?.categoryLeadDays?.[categoryId]) ||
+    productionSchedule?.standardLeadDays ||
+    null;
+  const blockedDates = productionSchedule?.blockedDates ?? [];
+  const blockedMatch = targetDate
+    ? blockedDates.find((item) => item.date === targetDate)
+    : undefined;
 
   const deliveryOptions: Array<{ id: DeliveryMethod; title: string; subtitle: string }> = [
     {
@@ -282,7 +308,48 @@ export function StepCustomerDelivery({
         <p className="text-xs leading-relaxed text-muted">
           Tanggal ini menjadi acuan kebutuhan acara Anda. Kepastian jadwal penyelesaian mengikuti
           kapasitas produksi saat penawaran dikonfirmasi tim Celmira.
+          {recommendedLeadDays ? (
+            <>
+              {" "}
+              Estimasi pengerjaan standar kategori ini sekitar{" "}
+              <strong className="text-espresso">{recommendedLeadDays} hari kerja</strong>.
+            </>
+          ) : null}
         </p>
+
+        {productionSchedule?.operationalNote ? (
+          <p className="rounded-xl border border-cocoa/15 bg-ivory px-3.5 py-2.5 text-xs leading-relaxed text-espresso">
+            <strong className="font-semibold">Info Jadwal Celmira:</strong>{" "}
+            {productionSchedule.operationalNote}
+          </p>
+        ) : null}
+
+        {blockedDates.length > 0 ? (
+          <div className="rounded-xl border border-cocoa/15 bg-ivory px-3.5 py-2.5 text-xs text-muted">
+            <p className="font-medium text-espresso">Tanggal libur / slot penuh (tidak tersedia):</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {blockedDates.slice(0, 8).map((item) => (
+                <span
+                  className="rounded-full border border-cocoa/20 bg-cream/60 px-2.5 py-0.5 text-[0.6875rem] text-espresso"
+                  key={item.date}
+                >
+                  {formatDateOnlyId(item.date)} · {item.reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {blockedMatch ? (
+          <p
+            className="rounded-xl border border-rose/45 bg-rose/10 px-3.5 py-2 text-xs font-medium text-espresso"
+            role="alert"
+          >
+            Tanggal {formatDateOnlyId(blockedMatch.date)} tidak tersedia ({blockedMatch.reason}).
+            Silakan pilih tanggal target lainnya.
+          </p>
+        ) : null}
+
         {errors.targetDate ? (
           <p className="text-xs text-espresso" role="alert">
             {errors.targetDate}

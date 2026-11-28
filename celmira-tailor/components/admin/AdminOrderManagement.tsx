@@ -21,6 +21,12 @@ import {
   TruckIcon,
   UploadIcon,
 } from "@/components/ui/icons";
+import {
+  buildOrderWhatsAppUpdateMessage,
+  buildOrdersCsv,
+  buildWhatsAppChatUrl,
+  computeAdminRevenueSummary,
+} from "@/lib/admin-exports";
 import { formatFileSize } from "@/lib/attachments";
 import { validateAttachmentFile } from "@/lib/booking-validation";
 import { startChatRealtime } from "@/lib/chat-realtime";
@@ -558,7 +564,28 @@ export function AdminOrderManagement({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="no-print flex flex-wrap items-center gap-3">
+          <button
+            className={buttonClass("outline")}
+            disabled={orders.length === 0}
+            onClick={() => {
+              const csv = buildOrdersCsv(orders);
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `celmira-pesanan-${new Date().toISOString().slice(0, 10)}.csv`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              URL.revokeObjectURL(url);
+              setFeedback(`Berhasil mengekspor ${orders.length} pesanan ke file CSV.`);
+            }}
+            type="button"
+          >
+            <FileTextIcon className="h-4 w-4" />
+            Ekspor CSV ({orders.length})
+          </button>
           <button
             className={buttonClass("outline")}
             onClick={() => setShowQrisPanel((prev) => !prev)}
@@ -760,6 +787,58 @@ export function AdminOrderManagement({
         </div>
       </div>
 
+      {/* Ringkasan Keuangan Terverifikasi */}
+      {(() => {
+        const rev = computeAdminRevenueSummary(orders);
+        return (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4">
+              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                Kas Terverifikasi Masuk
+              </p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-xl text-espresso">
+                {hydrated ? formatRupiah(rev.totalCashReceived) : "—"}
+              </p>
+              <p className="mt-0.5 text-[0.6875rem] text-muted">
+                DP {formatRupiah(rev.verifiedDpTotal)} · Pelunasan{" "}
+                {formatRupiah(rev.verifiedSettlementTotal)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4">
+              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                Estimasi Sisa Tagihan
+              </p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-xl text-espresso">
+                {hydrated ? formatRupiah(rev.outstandingReceivable) : "—"}
+              </p>
+              <p className="mt-0.5 text-[0.6875rem] text-muted">
+                Pesanan disetujui / menunggu pelunasan
+              </p>
+            </div>
+            <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4">
+              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                Total Nilai Penawaran Aktif
+              </p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-xl text-espresso">
+                {hydrated ? formatRupiah(rev.totalActiveQuotedValue) : "—"}
+              </p>
+              <p className="mt-0.5 text-[0.6875rem] text-muted">Biaya jahit (di luar batal)</p>
+            </div>
+            <div className="rounded-2xl border border-cocoa/12 bg-ivory p-4">
+              <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+                Status Pelunasan
+              </p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-xl text-espresso">
+                {hydrated ? `${rev.paidFullCount} Lunas` : "—"}
+              </p>
+              <p className="mt-0.5 text-[0.6875rem] text-muted">
+                {rev.paidDpOnlyCount} pesanan baru lunas DP 50%
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Feedback global */}
       {feedback ? (
         <div className="mt-5 rounded-2xl border border-emerald-800/20 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-900">
@@ -921,7 +1000,7 @@ export function AdminOrderManagement({
                     />
                     {onOpenOrderChat ? (
                       <button
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
+                        className="no-print inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
                         onClick={() =>
                           onOpenOrderChat(
                             selectedOrder.orderCode,
@@ -934,6 +1013,53 @@ export function AdminOrderManagement({
                         Buka Chat Pesanan
                       </button>
                     ) : null}
+                    <button
+                      className="no-print inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
+                      onClick={() => {
+                        const origin =
+                          typeof window !== "undefined" ? window.location.origin : undefined;
+                        const msg = buildOrderWhatsAppUpdateMessage(selectedOrder, origin);
+                        void navigator.clipboard
+                          ?.writeText(msg)
+                          .then(() =>
+                            setFeedback(
+                              `Template pesan update WhatsApp untuk ${selectedOrder.orderCode} berhasil disalin.`
+                            )
+                          )
+                          .catch(() =>
+                            setErrorMessage("Browser membatasi akses salin otomatis ke clipboard.")
+                          );
+                      }}
+                      type="button"
+                    >
+                      Salin Update WA
+                    </button>
+                    {(() => {
+                      const origin =
+                        typeof window !== "undefined" ? window.location.origin : undefined;
+                      const waUrl = buildWhatsAppChatUrl(
+                        selectedOrder.customer.whatsapp,
+                        buildOrderWhatsAppUpdateMessage(selectedOrder, origin)
+                      );
+                      return waUrl ? (
+                        <a
+                          className="no-print inline-flex items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
+                          href={waUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Kirim ke WA
+                        </a>
+                      ) : null;
+                    })()}
+                    <button
+                      className="no-print inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3 py-1 text-[0.6875rem] font-medium text-espresso transition-colors hover:border-espresso"
+                      onClick={() => window.print()}
+                      type="button"
+                    >
+                      <FileTextIcon className="h-3.5 w-3.5" />
+                      Cetak Nota
+                    </button>
                   </div>
                 </div>
 

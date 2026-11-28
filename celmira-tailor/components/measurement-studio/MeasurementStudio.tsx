@@ -38,6 +38,7 @@ import {
   StudioApiError,
   deleteMeasurementProfileApi,
   fetchMeasurementProfilesApi,
+  fetchMeasurementTemplatesApi,
   migrateLegacyStudioDataIfNeeded,
   saveMeasurementProfileApi,
 } from "@/lib/studio-client";
@@ -230,11 +231,22 @@ export function MeasurementStudio() {
 
   useEffect(() => {
     let active = true;
-    const loadedTemplates = loadMeasurementTemplates();
+    let loadedTemplates = loadMeasurementTemplates();
     templatesRef.current = loadedTemplates;
     setTemplates(loadedTemplates);
 
     async function bootstrap() {
+      try {
+        const tplRes = await fetchMeasurementTemplatesApi();
+        if (active && Array.isArray(tplRes.templates) && tplRes.templates.length > 0) {
+          loadedTemplates = tplRes.templates;
+          templatesRef.current = loadedTemplates;
+          setTemplates(loadedTemplates);
+        }
+      } catch {
+        // Fallback ke template bawaan jika endpoint sementara tidak terjangkau
+      }
+
       let storedProfiles: MeasurementProfile[] = [];
       try {
         const migrated = await migrateLegacyStudioDataIfNeeded().catch(() => ({ ran: false }));
@@ -681,6 +693,7 @@ export function MeasurementStudio() {
               onChangeFieldValue={handleChangeFieldValue}
               onFocusField={setActiveFieldKey}
               onSelectGarmentType={handleSelectGarmentType}
+              templates={templates}
             />
 
             <div className="mt-6 flex flex-col gap-3 rounded-[1.5rem] border border-cocoa/15 bg-cream/45 p-5 sm:flex-row sm:items-center sm:justify-between">

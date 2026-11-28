@@ -7,6 +7,14 @@ import {
   grantTrackingAccessCookie,
   saveOrderInDb,
 } from "@/lib/server/order-repo";
+import {
+  TRACK_VERIFY_RATE_LIMIT,
+  buildRateLimitKey,
+  checkRateLimit,
+  clearRateLimit,
+  extractClientIp,
+  recordRateLimitFailure,
+} from "@/lib/server/rate-limit";
 import { ensureStudioSchema } from "@/lib/server/studio-schema";
 
 export async function POST(request: Request) {
@@ -29,8 +37,28 @@ export async function POST(request: Request) {
     );
   }
 
+  const rateKey = await buildRateLimitKey("track_verify", extractClientIp(request), orderCode);
+  const rateCheck = await checkRateLimit(env.DB, rateKey, TRACK_VERIFY_RATE_LIMIT);
+  if (!rateCheck.allowed) {
+    const minutes = Math.max(1, Math.ceil(rateCheck.retryAfterSeconds / 60));
+    return Response.json(
+      {
+        error: `Terlalu banyak percobaan verifikasi gagal untuk nomor pesanan ini. Coba kembali dalam ${minutes} menit.`,
+        retryAfterSeconds: rateCheck.retryAfterSeconds,
+      },
+      {
+        status: 429,
+        headers: {
+          "cache-control": "no-store",
+          "retry-after": String(rateCheck.retryAfterSeconds),
+        },
+      }
+    );
+  }
+
   const found = await getOrderByCode(env.DB, orderCode);
   if (!found) {
+    await recordRateLimitFailure(env.DB, rateKey, TRACK_VERIFY_RATE_LIMIT);
     return Response.json(
       {
         error:
@@ -48,8 +76,11 @@ export async function POST(request: Request) {
 
   const verification = verifyOrderTrackingAccess([currentOrder], orderCode, verifier);
   if (!verification.ok) {
+    await recordRateLimitFailure(env.DB, rateKey, TRACK_VERIFY_RATE_LIMIT);
     return Response.json({ error: verification.error }, { status: 403 });
   }
+
+  await clearRateLimit(env.DB, rateKey);
 
   const [trackingCookie, paymentConfig] = await Promise.all([
     grantTrackingAccessCookie(request, env.DB, verification.order.orderCode),

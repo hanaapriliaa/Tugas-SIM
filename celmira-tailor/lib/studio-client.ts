@@ -8,6 +8,7 @@ import {
 import type {
   DesignStudioSavedConfig,
   MeasurementProfile,
+  MeasurementTemplateConfig,
   ReferenceAttachment,
 } from "@/lib/types/tailor";
 
@@ -127,6 +128,17 @@ export async function uploadStudioReferenceFileApi(
     method: "POST",
     credentials: "same-origin",
     body: formData,
+  });
+  return parseJsonResponse(res);
+}
+
+export async function fetchMeasurementTemplatesApi(): Promise<{
+  templates: MeasurementTemplateConfig[];
+}> {
+  const res = await fetch("/api/studio/templates", {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
   });
   return parseJsonResponse(res);
 }

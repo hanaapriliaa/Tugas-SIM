@@ -27,6 +27,20 @@ export const metadata: Metadata = {
     locale: "id_ID",
     siteName: site.name,
     type: "website",
+    images: [
+      {
+        url: "/images/hero.png",
+        width: 1200,
+        height: 630,
+        alt: `${site.name} — Jahit Custom oleh ${site.brand}`,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${site.name} — ${site.tagline}`,
+    description: site.description,
+    images: ["/images/hero.png"],
   },
   icons: {
     icon: "/images/logo.png",

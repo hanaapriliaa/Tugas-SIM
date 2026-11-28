@@ -205,6 +205,33 @@
   }
 }
 
+/* Gaya cetak bersih untuk Invoice & Nota Pesanan (Save as PDF) */
+@media print {
+  header,
+  footer,
+  nav,
+  .no-print,
+  #floating-chat-panel {
+    display: none !important;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  .shell {
+    max-width: 100% !important;
+    padding-inline: 0 !important;
+  }
+
+  section,
+  article {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

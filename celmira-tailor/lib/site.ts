@@ -26,6 +26,7 @@ export const navigation = [
   { label: "Layanan", href: "/layanan" },
   { label: "Katalog Jahit", href: "/catalog" },
   { label: "Cara Pemesanan", href: "/cara-pemesanan" },
+  { label: "Lacak Pesanan", href: "/track" },
   { label: "Tentang Kami", href: "/tentang-kami" },
   { label: "Kontak", href: "/kontak" },
 ] as const;

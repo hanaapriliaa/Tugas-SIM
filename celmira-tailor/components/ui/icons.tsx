@@ -420,3 +420,65 @@ export function AlertCircleIcon({ className = "h-4 w-4" }: IconProps) {
     </svg>
   );
 }
+
+export function CalendarIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <rect height="16" rx="2" width="18" x="3" y="5" />
+      <path d="M16 3v4" />
+      <path d="M8 3v4" />
+      <path d="M3 10h18" />
+    </svg>
+  );
+}
+
+export function UsersIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M3 19.5c0-3 2.7-5 6-5s6 2 6 5" />
+      <path d="M16 5.5a3 3 0 0 1 0 5.5" />
+      <path d="M17.5 14.8c2 .5 3.5 2 3.5 4.7" />
+    </svg>
+  );
+}
+
+export function SlidersIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+    >
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h16" />
+      <circle cx="9" cy="6" r="2" fill="currentColor" />
+      <circle cx="15" cy="12" r="2" fill="currentColor" />
+      <circle cx="10" cy="18" r="2" fill="currentColor" />
+    </svg>
+  );
+}

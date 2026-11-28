@@ -6,7 +6,10 @@ import { BookingStepper } from "@/components/orders/BookingStepper";
 import { BookingSummarySidebar } from "@/components/orders/BookingSummarySidebar";
 import { OrderConfirmationView } from "@/components/orders/OrderConfirmationView";
 import { StepCategoryDesign } from "@/components/orders/StepCategoryDesign";
-import { StepCustomerDelivery } from "@/components/orders/StepCustomerDelivery";
+import {
+  StepCustomerDelivery,
+  type PublicProductionScheduleInfo,
+} from "@/components/orders/StepCustomerDelivery";
 import { StepGarmentDetails } from "@/components/orders/StepGarmentDetails";
 import { StepMeasurements } from "@/components/orders/StepMeasurements";
 import { StepOrderReview } from "@/components/orders/StepOrderReview";
@@ -58,6 +61,8 @@ export function CustomerBookingFlow() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [savedDesigns, setSavedDesigns] = useState<DesignStudioSavedConfig[]>([]);
   const [measurementProfiles, setMeasurementProfiles] = useState<MeasurementProfile[]>([]);
+  const [productionSchedule, setProductionSchedule] =
+    useState<PublicProductionScheduleInfo | null>(null);
   const [submittedOrder, setSubmittedOrder] = useState<SubmittedOrder | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -72,15 +77,21 @@ export function CustomerBookingFlow() {
       let sessionContact: { fullName: string; whatsapp: string; email: string } | null = null;
 
       try {
-        const [designsRes, profilesRes, ordersRes] = await Promise.all([
+        const [designsRes, profilesRes, ordersRes, scheduleRes] = await Promise.all([
           fetchSavedDesignsApi(),
           fetchMeasurementProfilesApi(),
           fetchCustomerOrdersApi().catch(() => ({ orders: [], customerContact: null })),
+          fetch("/api/site/production-schedule", { cache: "no-store" })
+            .then((r) => (r.ok ? (r.json() as Promise<PublicProductionScheduleInfo>) : null))
+            .catch(() => null),
         ]);
         if (!active) return;
         designs = designsRes.designs;
         profiles = profilesRes.profiles;
         sessionContact = ordersRes.customerContact;
+        if (scheduleRes) {
+          setProductionSchedule(scheduleRes);
+        }
       } catch {
         // Bila gagal memuat sementara, pengguna tetap dapat memilih desain Celmira / ukuran manual
       }
@@ -204,8 +215,22 @@ export function CustomerBookingFlow() {
         return validateStep2(candidate);
       case 3:
         return validateStep3(candidate);
-      case 4:
-        return validateStep4(candidate);
+      case 4: {
+        const base = validateStep4(candidate);
+        const blocked = productionSchedule?.blockedDates.find(
+          (item) => item.date === candidate.targetDate
+        );
+        if (blocked) {
+          return {
+            valid: false,
+            errors: {
+              ...base.errors,
+              targetDate: `Tanggal ${blocked.date} tidak tersedia (${blocked.reason}). Pilih tanggal target lain.`,
+            },
+          };
+        }
+        return base;
+      }
       case 5:
         return validateStep5(candidate);
       default:
@@ -513,6 +538,7 @@ export function CustomerBookingFlow() {
 
             {currentStep === 4 ? (
               <StepCustomerDelivery
+                categoryId={draft.categoryId}
                 customer={draft.customer}
                 delivery={draft.delivery}
                 errors={errors}
@@ -529,6 +555,7 @@ export function CustomerBookingFlow() {
                   }))
                 }
                 onChangeTargetDate={(targetDate) => setDraft((prev) => ({ ...prev, targetDate }))}
+                productionSchedule={productionSchedule}
                 targetDate={draft.targetDate}
               />
             ) : null}

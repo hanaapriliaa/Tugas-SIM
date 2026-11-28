@@ -22,6 +22,7 @@ import type {
   ReferenceAttachment,
 } from "@/lib/types/tailor";
 import { ensureStudioSchema } from "./studio-schema.ts";
+import { listMeasurementTemplatesInDb } from "./admin-repo.ts";
 import {
   bindStudioFilesToDesign,
   extractStudioFileIdFromUrl,
@@ -412,13 +413,20 @@ export async function saveMeasurementProfileInDb(
   | { ok: true; profile: MeasurementProfile }
   | { ok: false; status: number; error: string; errors?: Record<string, string> }
 > {
-  const validation = validateMeasurementDraft(draft, DEFAULT_MEASUREMENT_TEMPLATES);
+  await ensureStudioSchema(db);
+  let activeTemplates = DEFAULT_MEASUREMENT_TEMPLATES;
+  try {
+    activeTemplates = await listMeasurementTemplatesInDb(db);
+  } catch {
+    activeTemplates = DEFAULT_MEASUREMENT_TEMPLATES;
+  }
+
+  const validation = validateMeasurementDraft(draft, activeTemplates);
   if (!validation.valid) {
     const firstError = Object.values(validation.errors)[0] ?? "Data ukuran belum lengkap.";
     return { ok: false, status: 400, error: firstError, errors: validation.errors };
   }
 
-  await ensureStudioSchema(db);
   const now = new Date();
   const timestamp = now.toISOString();
 
@@ -460,7 +468,7 @@ export async function saveMeasurementProfileInDb(
       ...draft,
       id: targetId,
     },
-    DEFAULT_MEASUREMENT_TEMPLATES,
+    activeTemplates,
     now
   );
 

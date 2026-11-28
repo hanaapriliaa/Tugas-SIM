@@ -374,20 +374,32 @@ export function InvoicePaymentPanel({
           </p>
         </div>
 
-        <div className="rounded-2xl border border-cocoa/14 bg-cream/65 px-4 py-3 text-right">
-          <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
-            Harga Akhir Jahit
-          </p>
-          <p className="mt-1 font-[family-name:var(--font-display)] text-xl text-espresso">
-            {formatRupiah(order.invoice.tailoringFee)}
-          </p>
-          <p className="mt-0.5 text-[0.6875rem] text-muted">
-            {order.delivery.method === "pickup"
-              ? "Ambil di butik · Ongkir Rp 0"
-              : order.invoice.shippingFee !== null
-                ? `Ongkir terpisah: ${formatRupiah(order.invoice.shippingFee)}`
-                : "Ongkir ditetapkan terpisah oleh admin"}
-          </p>
+        <div className="flex flex-col items-end gap-2">
+          <div className="rounded-2xl border border-cocoa/14 bg-cream/65 px-4 py-3 text-right">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-cocoa">
+              Harga Akhir Jahit
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-xl text-espresso">
+              {formatRupiah(order.invoice.tailoringFee)}
+            </p>
+            <p className="mt-0.5 text-[0.6875rem] text-muted">
+              {order.delivery.method === "pickup"
+                ? "Ambil di butik · Ongkir Rp 0"
+                : order.invoice.shippingFee !== null
+                  ? `Ongkir terpisah: ${formatRupiah(order.invoice.shippingFee)}`
+                  : "Ongkir ditetapkan terpisah oleh admin"}
+            </p>
+          </div>
+          {order.invoice.tailoringFee ? (
+            <button
+              className="no-print inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cocoa/25 bg-ivory px-3.5 py-1.5 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-espresso transition-colors hover:border-espresso"
+              onClick={() => window.print()}
+              type="button"
+            >
+              <FileTextIcon className="h-3.5 w-3.5 text-cocoa" />
+              Cetak / Simpan PDF
+            </button>
+          ) : null}
         </div>
       </div>
 
